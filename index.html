@@ -1,0 +1,2472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="description" content="Interactive 3D simulation of the Team Falcon FPS gun controller: an ESP32 + MPU6050 blaster you can take apart, tune, and shoot with. Connect a real ESP32 over USB and it drives the same page.">
+<meta name="theme-color" content="#0f1320" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#eef0f5" media="(prefers-color-scheme: light)">
+<meta name="author" content="Team Falcon">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Falcon Blaster Sim">
+<meta property="og:description" content="Take apart, tune and shoot the ESP32 + MPU6050 FPS gun controller — and plug in the real thing.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f1320'/%3E%3Cpath d='M5 8h17l5 5-5 5h-7l-5 7V8z' fill='%23f5b638'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f1320'/%3E%3Cpath d='M5 8h17l5 5-5 5h-7l-5 7V8z' fill='%23f5b638'/%3E%3C/svg%3E">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+  :root { color-scheme: dark light; }
+  html, body { height: 100%; margin: 0; background: #0f1320; }
+  @media (prefers-color-scheme: light) { html, body { background: #eef0f5; } }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+  /* boot splash — removed once the app has drawn its first frame */
+  #boot { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; gap: 14px;
+          background: #0f1320; color: #a3abbe; font: 500 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+          transition: opacity .35s ease; }
+  @media (prefers-color-scheme: light) { #boot { background: #eef0f5; color: #4f5670; } }
+  #boot.is-done { opacity: 0; pointer-events: none; }
+  #boot div { text-align: center; }
+  #boot b { display: block; color: #f5b638; font: 700 20px/1.2 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; margin-bottom: 6px; }
+  #boot i { display: block; width: 120px; height: 3px; margin: 12px auto 0; border-radius: 2px; background: rgba(245,182,56,.2); overflow: hidden; }
+  #boot i::after { content: ""; display: block; width: 40%; height: 100%; border-radius: 2px; background: #f5b638; animation: slide 1.1s ease-in-out infinite; }
+  @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
+  @media (prefers-reduced-motion: reduce) { #boot i::after { animation: none; width: 100%; } #boot { transition: none; } }
+</style>
+<title>Falcon Blaster Sim</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0f1320; --panel: #161b2a; --panel-2: #1c2233; --panel-3: #242c40; --line: #2a3247; --line-2: #384263;
+  --ink: #e9ecf4; --ink-2: #a3abbe; --ink-3: #6c7590;
+  --accent: #f5b638; --accent-ink: #1a1200; --accent-text: #f5b638; --accent-soft: rgba(245,182,56,.14);
+  --fire: #ff6b2c; --data: #3fd0c0; --ble: #3987e5; --serial: #a855f7;
+  --good: #0ca30c; --warn: #fab219; --crit: #d03b3b;
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+  --overlay: rgba(22,27,42,.86); --shadow: 0 12px 32px rgba(0,0,0,.45);
+  --font-display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #eef0f5; --panel: #ffffff; --panel-2: #f4f5f9; --panel-3: #e7eaf2; --line: #d9dde8; --line-2: #c3cadb;
+    --ink: #141826; --ink-2: #4f5670; --ink-3: #7b8299;
+    --accent: #f5b638; --accent-ink: #1a1200; --accent-text: #8a5f00; --accent-soft: rgba(245,182,56,.22);
+    --fire: #e8571a; --data: #0e8f84; --ble: #2a78d6; --serial: #7c3aed;
+    --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a;
+    --overlay: rgba(255,255,255,.88); --shadow: 0 12px 32px rgba(20,24,38,.16);
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eef0f5; --panel: #ffffff; --panel-2: #f4f5f9; --panel-3: #e7eaf2; --line: #d9dde8; --line-2: #c3cadb;
+  --ink: #141826; --ink-2: #4f5670; --ink-3: #7b8299;
+  --accent: #f5b638; --accent-ink: #1a1200; --accent-text: #8a5f00; --accent-soft: rgba(245,182,56,.22);
+  --fire: #e8571a; --data: #0e8f84; --ble: #2a78d6; --serial: #7c3aed;
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a;
+  --overlay: rgba(255,255,255,.88); --shadow: 0 12px 32px rgba(20,24,38,.16);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font-body); overflow: hidden; -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+a { color: var(--accent-text); }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-3); }
+.app { height: 100%; display: flex; flex-direction: column; }
+
+/* ---------- top bar ---------- */
+.topbar { display: flex; align-items: center; gap: 14px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex: none; }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand-mark { width: 30px; height: 30px; flex: none; }
+.brand-name { font: 700 18px/1 var(--font-display); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.brand-sub { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+.modes { display: flex; gap: 2px; padding: 3px; border-radius: 6px; background: var(--panel-3); margin-left: auto; }
+.mode-btn { border: 0; background: transparent; padding: 6px 14px; border-radius: 4px; font: 600 12.5px/1 var(--font-display); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); }
+.mode-btn.is-active { background: var(--accent); color: var(--accent-ink); }
+.topbar-right { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.modes + .topbar-right { margin-left: 0; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line-2); font: 600 10.5px/1.4 var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+.chip.is-on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.chip-src::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); }
+.chip-src[data-src="gyro"]::before { background: var(--data); } .chip-src[data-src="serial"]::before { background: var(--serial); } .chip-src[data-src="mouse"]::before { background: var(--accent); }
+.icon-btn { width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--panel-2); font: 600 14px/1 var(--font-display); color: var(--ink-2); display: grid; place-items: center; }
+.icon-btn.is-off { text-decoration: line-through; color: var(--ink-3); }
+.panel-toggle { display: none; }
+
+/* ---------- stage ---------- */
+.stage { flex: 1; display: flex; min-height: 0; }
+.viewport { flex: 1; position: relative; min-width: 0; overflow: hidden; background: var(--bg); }
+.viewport canvas#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; -webkit-user-select: none; }
+.gl-fallback { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--ink-2); max-width: 46ch; margin: auto; }
+.vp-hint { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); padding: 5px 12px; border-radius: 999px; background: var(--overlay); border: 1px solid var(--line); font-size: 11.5px; color: var(--ink-2); pointer-events: none; white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; }
+.vp-hint:empty { display: none; }
+.vp-tools { position: absolute; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--overlay); border: 1px solid var(--line); backdrop-filter: blur(6px); max-width: calc(100% - 24px); }
+.slider { display: flex; align-items: center; gap: 8px; font: 600 11px var(--font-display); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
+.slider input { width: 130px; accent-color: var(--accent); }
+.btn { font: 600 11.5px/1 var(--font-display); letter-spacing: .08em; text-transform: uppercase; padding: 8px 11px; border-radius: 5px; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--ink); }
+.btn:hover { border-color: var(--accent); }
+.btn.is-on, .btn-primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.btn:disabled { opacity: .6; cursor: default; }
+.btn-ghost { background: transparent; }
+.seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 5px; overflow: hidden; }
+.seg .btn { border: 0; border-radius: 0; border-right: 1px solid var(--line-2); } .seg .btn:last-child { border-right: 0; }
+
+/* labels */
+.labels { position: absolute; inset: 0; pointer-events: none; }
+.labels .lbl { position: absolute; left: 0; top: 0; pointer-events: auto; display: none; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--line-2); background: var(--overlay); font: 600 10.5px/1.3 var(--font-display); letter-spacing: .06em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
+.labels.is-visible .lbl { display: block; }
+.labels .lbl.is-hover, .labels .lbl:hover { border-color: var(--accent); color: var(--accent-text); }
+.labels .lbl.is-selected { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.leaders { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
+.leaders.is-visible { display: block; }
+.leaders line { stroke: var(--ink-3); stroke-width: 1; }
+.info-card { position: absolute; left: 12px; top: 44px; width: min(320px, calc(100% - 24px)); background: var(--overlay); border: 1px solid var(--line-2); border-left: 3px solid var(--accent); border-radius: 8px; padding: 12px 14px; box-shadow: var(--shadow); backdrop-filter: blur(6px); }
+.info-card h3 { margin: 0 24px 4px 0; font: 700 15px/1.2 var(--font-display); letter-spacing: .03em; }
+.info-card p { margin: 0 0 8px; font-size: 12.5px; color: var(--ink-2); }
+.info-card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 11.5px; }
+.info-card dt { color: var(--ink-3); text-transform: uppercase; letter-spacing: .08em; font: 600 10px/1.6 var(--font-display); }
+.info-card dd { margin: 0; font-family: var(--font-mono); font-size: 11px; color: var(--ink); overflow-wrap: anywhere; }
+.info-close { position: absolute; right: 8px; top: 8px; width: 24px; height: 24px; border: 0; background: transparent; color: var(--ink-3); font-size: 16px; line-height: 1; }
+
+/* bench HUD */
+.bench-hud { position: absolute; inset: 0; pointer-events: none; }
+.bench-read { position: absolute; left: 12px; top: 44px; display: flex; gap: 14px; padding: 10px 14px; border-radius: 8px; background: var(--overlay); border: 1px solid var(--line); }
+.bench-read div { display: flex; flex-direction: column; }
+.bench-read span { font: 600 10px/1.4 var(--font-display); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.bench-read b { font: 600 26px/1.1 var(--font-display); font-variant-numeric: tabular-nums; min-width: 4.2ch; }
+.bench-read b::after { content: "°"; color: var(--ink-3); font-size: 16px; }
+.bench-read b.plain::after { content: ""; }
+.bench-actions { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 10px; align-items: flex-end; pointer-events: auto; }
+.big-trigger { width: 92px; height: 92px; border-radius: 50%; border: 3px solid var(--fire); background: var(--overlay); color: var(--fire); font: 700 13px/1.1 var(--font-display); letter-spacing: .1em; text-transform: uppercase; touch-action: none; user-select: none; -webkit-user-select: none; }
+.big-trigger.is-down { background: var(--fire); color: #fff; transform: scale(.95); }
+
+/* range HUD */
+.hud { position: absolute; inset: 0; pointer-events: none; font-family: var(--font-display); }
+.crosshair { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%); }
+.crosshair i { position: absolute; background: var(--accent); box-shadow: 0 0 2px rgba(0,0,0,.6); }
+.crosshair i:nth-child(1) { left: 14px; top: 0; width: 2px; height: 9px; } .crosshair i:nth-child(2) { left: 14px; bottom: 0; width: 2px; height: 9px; }
+.crosshair i:nth-child(3) { top: 14px; left: 0; height: 2px; width: 9px; } .crosshair i:nth-child(4) { top: 14px; right: 0; height: 2px; width: 9px; }
+.hitmarker { position: absolute; left: 50%; top: 50%; width: 34px; height: 34px; transform: translate(-50%, -50%) rotate(45deg); opacity: 0; }
+.hitmarker::before, .hitmarker::after { content: ""; position: absolute; background: #fff; box-shadow: 0 0 4px rgba(0,0,0,.7); }
+.hitmarker::before { left: 16px; top: 0; width: 2px; height: 34px; } .hitmarker::after { top: 16px; left: 0; height: 2px; width: 34px; }
+.hitmarker[data-zone="10"]::before, .hitmarker[data-zone="10"]::after { background: var(--fire); }
+.hitmarker.is-on { animation: hit .28s ease-out; }
+@keyframes hit { 0% { opacity: 1; transform: translate(-50%, -50%) rotate(45deg) scale(1.5); } 100% { opacity: 0; transform: translate(-50%, -50%) rotate(45deg) scale(.9); } }
+.hud-top { position: absolute; left: 14px; top: 44px; display: flex; gap: 18px; padding: 10px 14px; border-radius: 8px; background: var(--overlay); border: 1px solid var(--line); }
+.hud-top div { display: flex; flex-direction: column; } .hud-top span { font: 600 10px/1.4 var(--font-display); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.hud-top b { font: 700 24px/1.1 var(--font-display); font-variant-numeric: tabular-nums; } .hud-top b.small { font-size: 18px; color: var(--ink-2); }
+.hud-bottom { position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-radius: 8px; background: var(--overlay); border: 1px solid var(--line); }
+.ammo { display: flex; align-items: center; gap: 4px; } .ammo i { width: 7px; height: 22px; border-radius: 2px; background: var(--panel-3); border: 1px solid var(--line-2); } .ammo i.on { background: var(--fire); border-color: var(--fire); }
+.ammo b { margin-left: 8px; font: 700 20px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.hud-mode { padding: 4px 10px; border-radius: 4px; border: 1px solid var(--accent); color: var(--accent-text); font: 700 12px/1.2 var(--font-display); letter-spacing: .14em; }
+.hud-msg { position: absolute; left: 14px; top: 116px; padding: 8px 14px; border-radius: 8px; background: var(--overlay); border: 1px solid var(--line); font: 500 12px/1.4 var(--font-body); color: var(--ink-2); max-width: min(420px, calc(100% - 28px)); }
+.touch { position: absolute; inset: 0; pointer-events: none; }
+.touch.is-desktop { display: none; }
+.stick { position: absolute; left: 22px; bottom: 96px; width: 120px; height: 120px; border-radius: 50%; border: 2px solid var(--line-2); background: var(--overlay); pointer-events: auto; touch-action: none; }
+.stick i { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; margin: -23px; border-radius: 50%; background: var(--accent); opacity: .9; }
+.touch-btns { position: absolute; right: 16px; bottom: 96px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; pointer-events: auto; }
+.tbtn { width: 64px; height: 44px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--overlay); color: var(--ink); font: 700 11px/1 var(--font-display); letter-spacing: .1em; touch-action: none; user-select: none; -webkit-user-select: none; }
+.tbtn.is-down { background: var(--accent); color: var(--accent-ink); }
+.touch .big-trigger { align-self: flex-end; }
+
+/* ---------- bench panel ---------- */
+.panel { width: 384px; flex: none; border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; transition: width .3s ease; }
+.panel.is-collapsed { width: 0; border-left: 0; overflow: hidden; }
+.panel-handle { display: none; }
+.panel-tabs { display: flex; border-bottom: 1px solid var(--line); flex: none; }
+.panel-tab { flex: 1; padding: 11px 4px 9px; border: 0; border-bottom: 2px solid transparent; background: none; font: 600 11px/1 var(--font-display); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; }
+.panel-tab.is-active { color: var(--ink); border-bottom-color: var(--accent); }
+.pane { flex: 1; overflow-y: auto; padding: 14px 16px 28px; min-width: 0; }
+.pane h3 { margin: 0 0 4px; font: 700 14px/1.2 var(--font-display); letter-spacing: .04em; }
+.pane .lead { margin: 0 0 14px; font-size: 12.5px; color: var(--ink-2); }
+.stage-card { border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); margin-bottom: 10px; overflow: hidden; }
+.stage-head { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid var(--line); }
+.stage-num { width: 20px; height: 20px; border-radius: 4px; background: var(--accent); color: var(--accent-ink); font: 700 11.5px/1 var(--font-display); display: grid; place-items: center; flex: none; }
+.stage-title { font: 600 11.5px/1.2 var(--font-display); letter-spacing: .12em; text-transform: uppercase; }
+.stage-meta { margin-left: auto; font: 500 10.5px var(--font-mono); color: var(--ink-3); white-space: nowrap; }
+.stage-body { padding: 9px 10px 10px; display: grid; gap: 9px; }
+.kv-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 8px; }
+.kv-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.kv { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.kv span { font: 600 9.5px/1.4 var(--font-display); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kv b { font: 500 13px/1.3 var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kv b.wide { white-space: normal; overflow-wrap: anywhere; font-size: 12px; }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.row .chip { padding: 2px 7px; }
+.spark { width: 100%; height: 72px; display: block; background: var(--panel); border-radius: 4px; border: 1px solid var(--line); }
+.legend { display: flex; gap: 12px; font-size: 10.5px; color: var(--ink-2); margin-top: -3px; }
+.legend i { width: 12px; height: 2px; display: inline-block; vertical-align: middle; margin-right: 5px; border-radius: 1px; }
+.joypad { width: 52px; height: 52px; flex: none; border-radius: 8px; border: 1px solid var(--line-2); position: relative; background: var(--panel); }
+.joypad::before, .joypad::after { content: ""; position: absolute; background: var(--line); } .joypad::before { left: 50%; top: 6px; bottom: 6px; width: 1px; } .joypad::after { top: 50%; left: 6px; right: 6px; height: 1px; }
+.joypad i { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px; border-radius: 50%; background: var(--data); box-shadow: 0 0 6px var(--data); }
+.bar { flex: 1; height: 7px; background: var(--panel-3); border-radius: 4px; overflow: hidden; border: 1px solid var(--line); }
+.bar i { display: block; height: 100%; width: 0; background: var(--fire); transition: width .05s linear; }
+.dot { width: 11px; height: 11px; border-radius: 50%; background: var(--panel-3); border: 1px solid var(--line-2); flex: none; }
+.dot.is-on { background: #ffe9c2; box-shadow: 0 0 10px var(--fire), 0 0 3px #fff; border-color: var(--fire); }
+.dot.buzz.is-on { background: var(--accent); box-shadow: 0 0 8px var(--accent); border-color: var(--accent); }
+.dot.status[data-mode="ble"] { background: var(--ble); box-shadow: 0 0 8px var(--ble); border-color: var(--ble); }
+.dot.status[data-mode="serial"] { background: var(--serial); box-shadow: 0 0 8px var(--serial); border-color: var(--serial); }
+.fb-row { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 8px; font-size: 11.5px; }
+.fb-row > span { font: 600 9.5px/1.4 var(--font-display); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.fb-row .val { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 11.5px; min-width: 0; }
+.ammo-mini { display: inline-flex; gap: 3px; } .ammo-mini i { width: 6px; height: 14px; border-radius: 2px; background: var(--panel-3); border: 1px solid var(--line-2); } .ammo-mini i.on { background: var(--good); border-color: var(--good); }
+.hidlog { margin: 0; font: 11px/1.55 var(--font-mono); white-space: pre; overflow-x: auto; color: var(--ink-2); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; min-height: 64px; }
+.note { font-size: 11.5px; color: var(--ink-3); margin: 0; }
+
+/* tune */
+.tune-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.tune-row label { font-size: 12.5px; font-weight: 500; } .tune-row small { display: block; font-size: 11px; color: var(--ink-3); font-weight: 400; }
+.tune-row output { font: 500 12px var(--font-mono); font-variant-numeric: tabular-nums; color: var(--accent-text); white-space: nowrap; }
+.tune-row input[type="range"] { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); margin: 0; }
+.check { display: flex; align-items: center; gap: 8px; padding: 8px 0; font-size: 12.5px; border-bottom: 1px solid var(--line); } .check input { accent-color: var(--accent); }
+.scenarios { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin: 10px 0; }
+.transport { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0 12px; }
+.transport label { border: 1px solid var(--line-2); border-radius: 5px; padding: 8px; font-size: 11.5px; text-align: center; cursor: pointer; }
+.transport label:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.transport input { display: none; } .transport b { display: block; font: 600 11px/1.3 var(--font-display); letter-spacing: .08em; text-transform: uppercase; }
+.transport small { color: var(--ink-3); font-size: 10.5px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* connect */
+.src-btn { width: 100%; text-align: left; display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: center; padding: 10px 12px; margin-bottom: 8px; border-radius: 6px; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--ink); }
+.src-btn.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.src-btn svg { width: 30px; height: 30px; }
+.src-btn b { display: block; font: 600 12.5px/1.3 var(--font-display); letter-spacing: .05em; } .src-btn small { color: var(--ink-2); font-size: 11.5px; }
+.status { padding: 8px 10px; border-radius: 5px; background: var(--panel-2); border: 1px solid var(--line); font-size: 12px; color: var(--ink-2); margin: 8px 0; }
+.status.is-bad { border-color: var(--crit); color: var(--ink); }
+pre.proto { margin: 8px 0 0; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; font: 11px/1.5 var(--font-mono); overflow-x: auto; color: var(--ink-2); }
+details { margin-top: 10px; } summary { cursor: pointer; font: 600 11.5px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
+
+/* pins */
+.pins { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pins th { text-align: left; font: 600 10px/1.4 var(--font-display); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); padding: 6px 6px; border-bottom: 1px solid var(--line-2); }
+.pins td { padding: 7px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.pins tr[data-comp] { cursor: pointer; } .pins tr[data-comp]:hover td { background: var(--accent-soft); }
+.pins .mono { font-size: 11px; white-space: nowrap; }
+.pin-wrap { overflow-x: auto; }
+
+/* future */
+.future-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.future-item { padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel-2); }
+.future-item h4 { margin: 0 0 4px; font: 600 13px/1.3 var(--font-display); letter-spacing: .02em; }
+.future-item p { margin: 0 0 6px; font-size: 12px; color: var(--ink-2); }
+.refs { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; }
+
+/* modal */
+.modal { position: fixed; inset: 0; z-index: 60; background: rgba(6,8,14,.6); display: grid; place-items: center; padding: 16px; }
+.modal-card { width: min(880px, 100%); max-height: 100%; overflow: auto; background: var(--panel); border: 1px solid var(--line-2); border-radius: 8px; padding: 16px 18px 18px; box-shadow: var(--shadow); position: relative; outline: none; }
+.modal-card h2 { margin: 0 36px 8px 0; font: 700 16px/1.2 var(--font-display); letter-spacing: .03em; }
+.modal-close { position: absolute; right: 10px; top: 10px; width: 30px; height: 30px; border-radius: 5px; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--ink-2); font-size: 16px; line-height: 1; }
+.modal pre { margin: 10px 0 0; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 5px; font: 11.5px/1.5 var(--font-mono); overflow: auto; max-height: 60vh; color: var(--ink); }
+.help-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 22px; font-size: 12.5px; }
+.help-grid h4 { margin: 0 0 6px; font: 600 11.5px/1.3 var(--font-display); letter-spacing: .1em; text-transform: uppercase; color: var(--accent-text); }
+.help-grid dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; } .help-grid dt { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink); white-space: nowrap; } .help-grid dd { margin: 0; color: var(--ink-2); }
+kbd { font: 11px var(--font-mono); padding: 1px 5px; border-radius: 3px; border: 1px solid var(--line-2); background: var(--panel-2); }
+
+/* ---------- phone layout ---------- */
+@media (max-width: 860px) {
+  .topbar { gap: 8px; padding: 6px 10px; flex-wrap: wrap; }
+  .brand-sub { display: none; } .brand-name { font-size: 15px; }
+  .modes { order: 3; width: 100%; margin: 0; } .mode-btn { flex: 1; padding: 7px 4px; }
+  .topbar-right { margin-left: auto; } .chip-src { display: none; }
+  .stage { flex-direction: column; }
+  .panel { width: auto; height: 44%; border-left: 0; border-top: 1px solid var(--line); transition: height .3s ease; }
+  .panel.is-collapsed { height: 42px; width: auto; overflow: hidden; }
+  .panel-handle { display: block; height: 14px; border: 0; background: var(--panel); padding: 0; position: relative; flex: none; }
+  .panel-handle::before { content: ""; position: absolute; left: 50%; top: 5px; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: var(--line-2); }
+  .panel-tabs { overflow-x: auto; } .panel-tab { flex: none; padding: 8px 12px 7px; }
+  .pane { padding: 12px 12px 24px; }
+  .vp-tools { left: 8px; right: 8px; bottom: 8px; gap: 6px; padding: 6px 8px; } .slider input { width: 90px; } .btn { padding: 7px 8px; }
+  .hud-top { left: 8px; top: 40px; gap: 12px; padding: 8px 10px; } .hud-top b { font-size: 18px; }
+  .hud-bottom { right: 8px; bottom: 8px; gap: 8px; padding: 6px 10px; } .ammo i { width: 5px; height: 16px; }
+  .hud-msg { top: 96px; left: 8px; max-width: 60%; font-size: 11px; }
+  .stick { left: 12px; bottom: 60px; width: 104px; height: 104px; }
+  .touch-btns { right: 10px; bottom: 60px; }
+  .bench-actions { right: 10px; bottom: 10px; }
+  .help-grid { grid-template-columns: 1fr; }
+  .info-card { top: 40px; }
+}
+@media (prefers-reduced-motion: reduce) { .panel, .bar i { transition: none; } .hitmarker.is-on { animation-duration: .01s; } }
+</style>
+</head>
+<body>
+<div id="boot"><div><b>Falcon Blaster Sim</b>Loading the 3D controller…<i></i></div></div>
+<div class="app" id="app" data-mode="explore">
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true"><path d="M4 6h18l6 6-6 6h-8l-6 8V6z" fill="var(--accent)"/><path d="M12 14h8" stroke="var(--accent-ink)" stroke-width="2.4" stroke-linecap="round"/></svg>
+      <div>
+        <div class="brand-name">Falcon Blaster Sim</div>
+        <div class="brand-sub">FPS gun controller · ESP32 + MPU6050 · Team Falcon</div>
+      </div>
+    </div>
+    <nav class="modes" role="tablist" aria-label="View">
+      <button class="mode-btn is-active" role="tab" data-mode="explore" aria-selected="true">Explore</button>
+      <button class="mode-btn" role="tab" data-mode="bench" aria-selected="false">Bench</button>
+      <button class="mode-btn" role="tab" data-mode="range" aria-selected="false">Range</button>
+    </nav>
+    <div class="topbar-right">
+      <span class="chip chip-src" id="chipSource" data-src="mouse">Mouse &amp; keyboard</span>
+      <button class="icon-btn" id="btnSound" aria-pressed="true" title="Sound on/off" aria-label="Sound">♪</button>
+      <button class="icon-btn" id="btnHelp" title="Controls" aria-label="Controls">?</button>
+      <button class="icon-btn panel-toggle" id="btnPanel" title="Show or hide the bench panel" aria-label="Bench panel">▤</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="viewport" id="viewport">
+      <canvas id="gl" aria-label="3D view of the gun controller"></canvas>
+      <div class="gl-fallback" id="glFallback" hidden><div><strong>This browser can't create a WebGL 2 context.</strong><br>Open the page in a current Chrome, Edge, Firefox or Safari on a device with graphics acceleration. The bench panel on the right still shows the controller pipeline.</div></div>
+      <div class="vp-hint" id="vpHint">Drag to orbit · scroll to zoom · click a part for its pins</div>
+      <svg class="leaders" id="leaders" aria-hidden="true"></svg>
+      <div class="labels" id="labels"></div>
+
+      <div class="vp-tools" id="exploreTools">
+        <label class="slider" for="explode"><span>Explode</span><input type="range" id="explode" min="0" max="100" value="0" aria-label="Explode view"></label>
+        <span class="seg"><button class="btn" data-preset="0">Assembled</button><button class="btn" data-preset="0.5">Half</button><button class="btn" data-preset="1">Exploded</button></span>
+        <button class="btn" id="btnXray" aria-pressed="false" title="See through the shell (X)">X-ray</button>
+        <button class="btn" id="btnFireTest" title="Pull the trigger once: LED, motor, buzzer">Fire test</button>
+        <button class="btn" id="btnAutoRotate" aria-pressed="false">Auto-rotate</button>
+      </div>
+
+      <div class="info-card" id="infoCard" hidden>
+        <button class="info-close" id="infoClose" aria-label="Close">×</button>
+        <h3 id="infoName">Component</h3>
+        <p id="infoRole"></p>
+        <dl><dt>Pins</dt><dd id="infoPins"></dd><dt>Spec</dt><dd id="infoSpec"></dd></dl>
+      </div>
+
+      <div class="bench-hud" id="benchHud" hidden>
+        <div class="bench-read">
+          <div><span>Yaw</span><b id="benchYaw">+0.0</b></div>
+          <div><span>Pitch</span><b id="benchPitch">+0.0</b></div>
+          <div><span>Roll</span><b id="benchRoll">+0.0</b></div>
+          <div><span>Ammo</span><b id="benchAmmo" class="plain">6 / 6</b></div>
+        </div>
+        <div class="bench-actions">
+          <button class="btn" id="benchRecenter" title="Re-centre the yaw reference (C)">Re-centre</button>
+          <button class="big-trigger" id="benchTrigger">Trigger</button>
+        </div>
+      </div>
+
+      <div class="hud" id="rangeHud" hidden>
+        <div class="crosshair" id="crosshair"><i></i><i></i><i></i><i></i></div>
+        <div class="hitmarker" id="hitmarker"></div>
+        <div class="hud-top">
+          <div><span>Score</span><b id="hudScore">0</b></div>
+          <div><span>Accuracy</span><b id="hudAcc" class="small">—</b></div>
+          <div><span>Streak</span><b id="hudStreak" class="small"></b></div>
+          <div><span>Best</span><b id="hudBest" class="small">0</b></div>
+        </div>
+        <div class="hud-bottom">
+          <div class="ammo" id="hudAmmo"></div>
+          <span class="hud-mode" id="hudMode">SEMI</span>
+        </div>
+        <div class="hud-msg" id="hudMsg">Click to capture the mouse · move to aim · click to fire</div>
+        <div class="touch" id="touch">
+          <div class="stick" id="stickBase"><i id="stickKnob"></i></div>
+          <div class="touch-btns">
+            <button class="tbtn" id="touchReload">RELOAD</button>
+            <button class="tbtn" id="touchJump">JUMP</button>
+            <button class="tbtn" id="touchMode">SEMI</button>
+            <button class="big-trigger" id="touchTrigger">Trigger</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside class="panel" id="panel" aria-label="Bench panel">
+      <button class="panel-handle" id="panelHandle" aria-label="Expand or collapse the bench panel"></button>
+      <nav class="panel-tabs" role="tablist">
+        <button class="panel-tab is-active" role="tab" data-tab="signal" aria-selected="true">Signal chain</button>
+        <button class="panel-tab" role="tab" data-tab="tune" aria-selected="false">Tune</button>
+        <button class="panel-tab" role="tab" data-tab="connect" aria-selected="false">Connect</button>
+        <button class="panel-tab" role="tab" data-tab="pins" aria-selected="false">Pins</button>
+        <button class="panel-tab" role="tab" data-tab="future" aria-selected="false">Future</button>
+      </nav>
+
+      <section class="pane" data-pane="signal">
+        <div class="stage-card">
+          <div class="stage-head"><span class="stage-num">1</span><span class="stage-title">Input detection</span><span class="stage-meta" id="v-hz">0 Hz</span></div>
+          <div class="stage-body">
+            <div class="kv-grid">
+              <div class="kv"><span>Gyro X · roll</span><b id="v-gx">+0.0</b></div>
+              <div class="kv"><span>Gyro Y · pitch</span><b id="v-gy">+0.0</b></div>
+              <div class="kv"><span>Gyro Z · yaw</span><b id="v-gz">+0.0</b></div>
+            </div>
+            <canvas class="spark" id="spark" width="340" height="72" aria-label="Gyro rates, last 160 samples"></canvas>
+            <div class="legend"><span><i style="background:var(--series-1)"></i>X °/s</span><span><i style="background:var(--series-2)"></i>Y °/s</span><span><i style="background:var(--series-3)"></i>Z °/s</span><span class="muted" style="margin-left:auto">±2000 °/s · 16.4 LSB/°/s</span></div>
+            <div class="kv-grid">
+              <div class="kv"><span>Accel X g</span><b id="v-ax">+0.00</b></div>
+              <div class="kv"><span>Accel Y g</span><b id="v-ay">+0.00</b></div>
+              <div class="kv"><span>Accel Z g</span><b id="v-az">+1.00</b></div>
+            </div>
+            <div class="row">
+              <span class="chip" id="c-trig">Trigger</span><span class="chip" id="c-b0">Reload</span><span class="chip" id="c-b1">Jump</span><span class="chip" id="c-b2">Weapon</span>
+              <div class="joypad" style="margin-left:auto" title="Joystick"><i id="joyDot"></i></div>
+            </div>
+            <p class="note">Source: <span id="v-src">simulated IMU (mouse)</span></p>
+          </div>
+        </div>
+
+        <div class="stage-card">
+          <div class="stage-head"><span class="stage-num">2</span><span class="stage-title">Data processing</span><span class="stage-meta">on the ESP32</span></div>
+          <div class="stage-body">
+            <div class="kv-grid">
+              <div class="kv"><span>Rate X clean</span><b id="v-pgx">+0.0</b></div>
+              <div class="kv"><span>Rate Y clean</span><b id="v-pgy">+0.0</b></div>
+              <div class="kv"><span>Rate Z clean</span><b id="v-pgz">+0.0</b></div>
+              <div class="kv"><span>Pitch fused</span><b id="v-pitch">+0.0°</b></div>
+              <div class="kv"><span>Roll fused</span><b id="v-roll">+0.0°</b></div>
+              <div class="kv"><span>Yaw integrated</span><b id="v-yaw">+0.0°</b></div>
+            </div>
+            <div class="kv-grid two">
+              <div class="kv"><span>Bias estimate °/s</span><b id="v-bias">+0.00 +0.00 +0.00</b></div>
+              <div class="kv"><span>Yaw drift vs truth</span><b id="v-drift">+0.0°</b></div>
+            </div>
+            <p class="note">bias − deadzone → EMA smoothing → complementary filter (α on gyro, 1−α on accelerometer)</p>
+          </div>
+        </div>
+
+        <div class="stage-card">
+          <div class="stage-head"><span class="stage-num">3</span><span class="stage-title">Send to PC</span><span class="stage-meta" id="v-pps">0 /s</span></div>
+          <div class="stage-body">
+            <div class="kv-grid two">
+              <div class="kv"><span>Transport</span><b id="v-transport" class="wide">Bluetooth LE HID</b></div>
+              <div class="kv"><span>Latency, sensor → game</span><b id="v-latency" class="wide">≈ 25–35 ms</b></div>
+              <div class="kv"><span>Mouse report [btn dx dy whl]</span><b id="v-mouse">00 00 00 00</b></div>
+              <div class="kv"><span>Keyboard report [mod 0 k1…k6]</span><b id="v-kb">00 00 00 00 00 00 00 00</b></div>
+            </div>
+            <pre class="hidlog" id="hidLog">no reports yet — move the gun</pre>
+            <p class="note">Reports sent: <span id="v-total" class="mono">0</span> · HID usage IDs: R 15 · Space 2C · Q 14 · W 1A · A 04 · S 16 · D 07</p>
+          </div>
+        </div>
+
+        <div class="stage-card">
+          <div class="stage-head"><span class="stage-num">4</span><span class="stage-title">Game control</span><span class="stage-meta" id="v-fps">0 fps</span></div>
+          <div class="stage-body">
+            <div class="kv-grid">
+              <div class="kv"><span>Camera yaw</span><b id="v-camyaw">+0.0°</b></div>
+              <div class="kv"><span>Camera pitch</span><b id="v-campitch">+0.0°</b></div>
+              <div class="kv"><span>Gun vs game</span><b id="v-dev">+0.00°</b></div>
+            </div>
+            <div class="row" id="v-actions"></div>
+            <p class="note">The PC turns each report into mouse-look and key presses — the same thing any FPS receives.</p>
+          </div>
+        </div>
+
+        <div class="stage-card">
+          <div class="stage-head"><span class="stage-num">5</span><span class="stage-title">Feedback</span><span class="stage-meta">back on the gun</span></div>
+          <div class="stage-body">
+            <div class="fb-row"><span>Muzzle LED</span><div class="val"><i class="dot" id="fb-led"></i>GPIO16 · 60 ms pulse</div></div>
+            <div class="fb-row"><span>Status LED</span><div class="val"><i class="dot status" id="fb-status" data-mode="sim"></i>blue = BLE · purple = serial</div></div>
+            <div class="fb-row"><span>Motor PWM</span><div class="val"><div class="bar"><i id="fb-motor"></i></div><span id="v-motor">0 /255</span></div></div>
+            <div class="fb-row"><span>Buzzer</span><div class="val"><i class="dot buzz" id="fb-buzz"></i><span id="v-buzz">silent</span></div></div>
+            <div class="fb-row"><span>Ammo LEDs</span><div class="val"><span class="ammo-mini" id="fb-ammo"></span></div></div>
+            <div class="fb-row"><span>To device</span><div class="val"><span id="v-todev" class="muted">—</span></div></div>
+            <p class="note">Shot feedback is local to the ESP32; hit feedback comes back from the game over the serial link (H&lt;zone&gt;).</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="pane" data-pane="tune" hidden>
+        <h3>Controller tuning</h3>
+        <p class="lead">These are the constants at the top of the firmware. Change them here and watch the Range and the signal chain react.</p>
+        <div class="scenarios">
+          <button class="btn btn-ghost" data-scenario="ideal">Ideal sensor</button>
+          <button class="btn btn-ghost" data-scenario="uncal">Uncalibrated</button>
+          <button class="btn btn-ghost" data-scenario="noisy">Noisy gyro</button>
+          <button class="btn btn-ghost" data-scenario="tuned">Tuned firmware</button>
+        </div>
+        <div class="tune-row"><label for="s-sens">Sensitivity<small>mouse counts per degree of rotation</small></label><output id="o-sens"></output><input type="range" id="s-sens" min="4" max="30" step="1"></div>
+        <div class="tune-row"><label for="s-dead">Deadzone<small>rates below this are treated as still</small></label><output id="o-dead"></output><input type="range" id="s-dead" min="0" max="5" step="0.1"></div>
+        <div class="tune-row"><label for="s-smooth">Smoothing<small>EMA factor — higher is calmer but laggier</small></label><output id="o-smooth"></output><input type="range" id="s-smooth" min="0" max="0.8" step="0.05"></div>
+        <div class="tune-row"><label for="s-alpha">Filter α<small>gyro trust in the complementary filter</small></label><output id="o-alpha"></output><input type="range" id="s-alpha" min="0.9" max="0.999" step="0.001"></div>
+        <div class="tune-row"><label for="s-rate">Report rate<small>HID reports per second</small></label><output id="o-rate"></output><input type="range" id="s-rate" min="50" max="250" step="10"></div>
+        <div class="tune-row"><label for="s-noise">Gyro noise σ<small>sensor imperfection to simulate</small></label><output id="o-noise"></output><input type="range" id="s-noise" min="0" max="3" step="0.05"></div>
+        <div class="tune-row"><label for="s-bias">Gyro bias<small>uncalibrated offset — makes the aim drift</small></label><output id="o-bias"></output><input type="range" id="s-bias" min="-5" max="5" step="0.1"></div>
+        <label class="check"><input type="checkbox" id="k-quant" checked> Quantise to 16-bit like the MPU6050</label>
+        <label class="check"><input type="checkbox" id="k-inverty"> Invert Y</label>
+        <h3 style="margin-top:14px">Transport</h3>
+        <div class="transport">
+          <label><input type="radio" name="transport" value="ble" checked><b>BLE HID</b><small>wireless, 100 Hz</small></label>
+          <label><input type="radio" name="transport" value="usb"><b>USB HID</b><small>ESP32-S3, 125 Hz</small></label>
+          <label><input type="radio" name="transport" value="serial"><b>Serial</b><small>+ bridge.py</small></label>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" id="btnCalib" title="Average the gyro for 1 s and subtract it, as the firmware does at boot">Calibrate gyro</button>
+          <button class="btn" id="btnRecenter" title="Zero the yaw reference (C)">Re-centre</button>
+          <button class="btn btn-ghost" id="btnResetTune">Reset</button>
+        </div>
+      </section>
+
+      <section class="pane" data-pane="connect" hidden>
+        <h3>Where the motion comes from</h3>
+        <p class="lead">Start with the mouse, then use a phone's gyroscope as a stand-in IMU, then plug in the real ESP32 and this page becomes the test bench.</p>
+        <button class="src-btn is-on" id="srcMouse" aria-pressed="true">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="9" y="4" width="14" height="24" rx="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 4v9M9 13h14" stroke="currentColor" stroke-width="2"/></svg>
+          <span><b>Mouse &amp; keyboard</b><small>Simulated MPU6050 driven by your mouse. Works everywhere.</small></span>
+        </button>
+        <button class="src-btn" id="srcGyro" aria-pressed="false">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="9" y="3" width="14" height="26" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="16" cy="25" r="1.5" fill="currentColor"/><path d="M4 16c0-6 5-10 12-10M28 16c0 6-5 10-12 10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <span><b>Phone gyroscope</b><small>Open this page on a phone: its IMU becomes the gun's IMU. Hold it flat, top edge forward.</small></span>
+        </button>
+        <button class="src-btn" id="srcSerial" aria-pressed="false">
+          <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="9" width="26" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 13v6M12 13v6M16 13v6M20 13v6M24 13v6" stroke="currentColor" stroke-width="2"/><path d="M13 5h6M16 5v4" stroke="currentColor" stroke-width="2"/></svg>
+          <span><b>Real ESP32 over USB</b><small>Web Serial (Chrome / Edge). Flash FalconBlaster.ino, plug in, pick the port. Hits are sent back to the gun.</small></span>
+        </button>
+        <div class="status" id="connStatus">Aim with the mouse (or drag on touch). Everything downstream is simulated from that motion.</div>
+        <button class="btn btn-ghost" id="btnDisconnect" hidden>Disconnect</button>
+        <div class="actions">
+          <button class="btn btn-primary" id="btnFirmware">Firmware .ino</button>
+          <button class="btn" id="btnBridge">bridge.py</button>
+        </div>
+        <details>
+          <summary>Serial protocol</summary>
+<pre class="proto">ESP32 → PC, 100 Hz, 115200 baud:
+$gx,gy,gz,ax,ay,az,yaw,pitch,roll,T,B1,B2,B3,JX,JY
+  gyro °/s (x fwd, y left, z up) · accel g · fused angles °
+  T trigger · B1 reload · B2 jump · B3 weapon · joystick −1…1
+
+PC → ESP32:
+  Z  re-centre yaw      C  calibrate gyro
+  V&lt;0-255&gt; motor       L&lt;0|1&gt; muzzle LED
+  B&lt;hz&gt;,&lt;ms&gt; buzzer     H&lt;zone&gt; hit pattern
+  A&lt;n&gt; ammo LEDs        R  reload chirp</pre>
+        </details>
+      </section>
+
+      <section class="pane" data-pane="pins" hidden>
+        <h3>ESP32 DevKit V1 pin map</h3>
+        <p class="lead">Click a row to see the part on the gun. GPIO34/35 are input-only, which suits the joystick; strapping pins 0 and 12 are left alone.</p>
+        <div class="pin-wrap"><table class="pins"><thead><tr><th>Part</th><th>Pins</th><th>Notes</th></tr></thead><tbody id="pinRows"></tbody></table></div>
+        <details open>
+          <summary>Power budget</summary>
+          <p class="note" style="margin-top:6px">ESP32 with BLE ≈ 120 mA · MPU6050 4 mA · LEDs 6 × 10 mA · motor 70 mA (bursts) · buzzer 20 mA → ~200 mA average, ~350 mA peak. A 2600 mAh 18650 gives roughly 8 h; through an MT3608 boost at 5 V the budget is still comfortable.</p>
+        </details>
+      </section>
+
+      <section class="pane" data-pane="future" hidden>
+        <h3>Future enhancements</h3>
+        <p class="lead">Where the prototype goes next, each with the reference the team can start from. Roughly ordered from "next weekend" to "next semester".</p>
+        <ol class="future-list" id="futureList"></ol>
+      </section>
+    </aside>
+  </main>
+
+  <div class="modal" id="modalFirmware" hidden>
+    <div class="modal-card" tabindex="-1" role="dialog" aria-labelledby="fwTitle">
+      <button class="modal-close" aria-label="Close">×</button>
+      <h2 id="fwTitle">FalconBlaster.ino</h2>
+      <div class="actions" style="margin-top:0"><button class="btn btn-primary" id="btnCopyFw">Copy to clipboard</button></div>
+      <pre id="fwText"></pre>
+    </div>
+  </div>
+
+  <div class="modal" id="modalHelp" hidden>
+    <div class="modal-card" tabindex="-1" role="dialog" aria-labelledby="helpTitle">
+      <button class="modal-close" aria-label="Close">×</button>
+      <h2 id="helpTitle">Controls</h2>
+      <div class="help-grid">
+        <div><h4>Explore</h4><dl><dt>drag</dt><dd>orbit around the gun</dd><dt>wheel / pinch</dt><dd>zoom</dd><dt>click</dt><dd>select a part — pins, role, spec</dd><dt><kbd>E</kbd> / <kbd>X</kbd></dt><dd>explode / x-ray</dd></dl></div>
+        <div><h4>Bench</h4><dl><dt>drag</dt><dd>move the physical gun (yaw / pitch)</dd><dt><kbd>Space</kbd> / <kbd>F</kbd></dt><dd>pull the trigger</dd><dt><kbd>C</kbd></dt><dd>re-centre yaw</dd><dt>Connect tab</dt><dd>phone gyroscope or the real ESP32</dd></dl></div>
+        <div><h4>Range</h4><dl><dt>click</dt><dd>capture the mouse, then click = fire</dd><dt>move</dt><dd>aim (rate-based, like the firmware)</dd><dt><kbd>R</kbd></dt><dd>reload (6-dart magazine)</dd><dt><kbd>Q</kbd></dt><dd>semi ↔ auto (6 darts/s)</dd><dt><kbd>W A S D</kbd></dt><dd>move (joystick)</dd><dt><kbd>Space</kbd></dt><dd>jump</dd><dt><kbd>Esc</kbd></dt><dd>release the mouse</dd></dl></div>
+        <div><h4>Everywhere</h4><dl><dt><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></dt><dd>Explore / Bench / Range</dd><dt>♪</dt><dd>sound on/off</dd><dt>scoring</dt><dd>10 · 5 · 2 by ring, streak bonus up to ×2; darts drop with distance, so aim high at the 15–20 m lanes</dd></dl></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script type="text/plain" id="fwSrc">
+/*
+  FalconBlaster.ino — Team Falcon FPS Gun Controller (ESP32 + MPU6050)
+  ---------------------------------------------------------------------
+  Pipeline: read IMU + switches → bias/deadzone/complementary filter →
+            emit HID (BLE) and/or telemetry over USB serial → local feedback.
+
+  Serial telemetry (115200 baud, 100 Hz), one line per sample:
+    $gx,gy,gz,ax,ay,az,yaw,pitch,roll,T,B1,B2,B3,JX,JY
+      gx..gz  gyro  [deg/s]   sensor frame: x forward, y left, z up
+      ax..az  accel [g]
+      yaw,pitch,roll [deg]    fused (yaw integrates and drifts – re-centre with 'Z')
+      T,B1,B2,B3   trigger / reload / jump / weapon  (1 = pressed)
+      JX,JY        joystick -1..1
+
+  Commands from the PC (one per line):
+    Z            re-centre yaw            C            re-run gyro calibration
+    V<0-255>     vibration motor level    L<0|1>       muzzle LED
+    B<hz>,<ms>   buzzer tone              H<zone>      hit pattern (double pulse)
+    A<n>         ammo count for LED bar   R            reload chirp     F   fire echo (ignored)
+
+  Board: "ESP32 Dev Module". Works with arduino-esp32 core 2.x and 3.x.
+  Optional BLE HID: set USE_BLE_HID to 1 and install "ESP32-BLE-Combo"
+  (https://github.com/blackketter/ESP32-BLE-Combo) — Keyboard + Mouse in one device.
+*/
+#include <Wire.h>
+#include <math.h>
+
+#define USE_BLE_HID 0
+#if USE_BLE_HID
+  #include <BleCombo.h>
+#endif
+
+// ---------------- pins ----------------
+const int PIN_SDA = 21, PIN_SCL = 22, PIN_IMU_INT = 19;
+const int PIN_TRIGGER = 14;
+const int PIN_BTN_RELOAD = 27, PIN_BTN_JUMP = 26, PIN_BTN_MODE = 25;
+const int PIN_JOY_X = 34, PIN_JOY_Y = 35, PIN_JOY_SW = 33;   // 34/35 are input-only ADC pins
+const int PIN_MOTOR = 13, PIN_LED_MUZZLE = 16, PIN_LED_STATUS = 2, PIN_BUZZER = 17;
+const int PIN_AMMO[6] = {18, 23, 5, 4, 15, 32};
+
+// ---------------- tuning ----------------
+const float SENS = 12.0f;        // mouse counts per degree of rotation
+const float DEADZONE = 1.5f;     // deg/s
+const float SMOOTH = 0.25f;      // EMA factor 0..0.8
+const float ALPHA = 0.98f;       // complementary filter
+const uint32_t REPORT_US = 10000; // 100 Hz telemetry / HID
+const float JOY_DEADZONE = 0.08f;
+
+// ---------------- MPU6050 (raw registers, no library needed) ----------------
+const uint8_t MPU = 0x68;
+void mpuWrite(uint8_t reg, uint8_t val) { Wire.beginTransmission(MPU); Wire.write(reg); Wire.write(val); Wire.endTransmission(); }
+bool mpuRead(int16_t* a, int16_t* g) {
+  Wire.beginTransmission(MPU); Wire.write(0x3B); if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom((int)MPU, 14) != 14) return false;
+  uint8_t b[14]; for (int i = 0; i < 14; i++) b[i] = Wire.read();
+  a[0] = (b[0] << 8) | b[1]; a[1] = (b[2] << 8) | b[3]; a[2] = (b[4] << 8) | b[5];
+  g[0] = (b[8] << 8) | b[9]; g[1] = (b[10] << 8) | b[11]; g[2] = (b[12] << 8) | b[13];
+  return true;
+}
+// GY-521 mounted on the top rail, arrow (chip X) pointing at the muzzle, components up.
+// Sensor frame used everywhere: x = forward, y = left, z = up.
+inline void remap(const int16_t* in, float* out, float scale) { out[0] = in[0] * scale; out[1] = in[1] * scale; out[2] = in[2] * scale; }
+
+// ---------------- state ----------------
+float gyroBias[3] = {0, 0, 0};
+float gs[3] = {0, 0, 0};                 // smoothed, bias-corrected gyro
+float yaw = 0, pitch = 0, roll = 0;
+float accDx = 0, accDy = 0;
+int joyCx = 2048, joyCy = 2048;
+uint8_t ammo = 6;
+uint32_t lastUs = 0, lastReportUs = 0;
+
+// debounced inputs
+struct DebouncedPin { int pin; bool state; bool raw; uint32_t since; uint16_t ms; };
+DebouncedPin trig = {PIN_TRIGGER, false, false, 0, 5}, bReload = {PIN_BTN_RELOAD, false, false, 0, 20}, bJump = {PIN_BTN_JUMP, false, false, 0, 20}, bMode = {PIN_BTN_MODE, false, false, 0, 20};
+bool readDebounced(DebouncedPin& d) {
+  bool r = digitalRead(d.pin) == LOW;                   // active-low with INPUT_PULLUP
+  if (r != d.raw) { d.raw = r; d.since = millis(); }
+  if (r != d.state && millis() - d.since >= d.ms) d.state = r;
+  return d.state;
+}
+
+// ---------------- feedback (non-blocking) ----------------
+uint32_t ledOffAt = 0, buzzOffAt = 0, motorHoldUntil = 0; float motorLevel = 0, motorDecayMs = 130;
+struct Pulse { uint32_t at; uint8_t motor; uint16_t hz; uint16_t ms; }; Pulse queue[4]; int queued = 0;
+#if ESP_ARDUINO_VERSION_MAJOR >= 3
+  void pwmSetup() { ledcAttach(PIN_MOTOR, 12000, 8); ledcAttach(PIN_BUZZER, 2000, 8); }
+  void motorWrite(uint8_t v) { ledcWrite(PIN_MOTOR, v); }
+  void buzzerTone(uint16_t hz) { if (hz) ledcWriteTone(PIN_BUZZER, hz); else ledcWrite(PIN_BUZZER, 0); }
+#else
+  void pwmSetup() { ledcSetup(0, 12000, 8); ledcAttachPin(PIN_MOTOR, 0); ledcSetup(1, 2000, 8); ledcAttachPin(PIN_BUZZER, 1); }
+  void motorWrite(uint8_t v) { ledcWrite(0, v); }
+  void buzzerTone(uint16_t hz) { if (hz) ledcWriteTone(1, hz); else ledcWrite(1, 0); }
+#endif
+void buzz(uint16_t hz, uint16_t ms) { buzzerTone(hz); buzzOffAt = millis() + ms; }
+void motor(uint8_t level, uint16_t holdMs, float decayMs) { motorLevel = level; motorHoldUntil = millis() + holdMs; motorDecayMs = decayMs; motorWrite(level); }
+void enqueue(uint32_t inMs, uint8_t m, uint16_t hz, uint16_t ms) { if (queued < 4) { queue[queued++] = {millis() + inMs, m, hz, ms}; } }
+void fireFeedback() { digitalWrite(PIN_LED_MUZZLE, HIGH); ledOffAt = millis() + 60; motor(255, 30, 130); buzz(900, 30); }
+void hitFeedback(int zone) { uint16_t hz = zone >= 10 ? 1800 : 1500; enqueue(0, 180, hz, 40); enqueue(90, 180, zone >= 10 ? 2200 : 1500, 40); }
+void showAmmo() { for (int i = 0; i < 6; i++) digitalWrite(PIN_AMMO[i], i < ammo ? HIGH : LOW); }
+void serviceFeedback() {
+  static uint32_t lastMs = 0;
+  uint32_t now = millis(); float dtMs = (float)(now - lastMs); lastMs = now;
+  if (ledOffAt && now >= ledOffAt) { digitalWrite(PIN_LED_MUZZLE, LOW); ledOffAt = 0; }
+  if (buzzOffAt && now >= buzzOffAt) { buzzerTone(0); buzzOffAt = 0; }
+  if (motorLevel > 0 && now > motorHoldUntil) { motorLevel -= 255.0f * (dtMs / motorDecayMs); if (motorLevel < 0) motorLevel = 0; motorWrite((uint8_t)motorLevel); }
+  for (int i = 0; i < queued; i++) if (now >= queue[i].at) { motor(queue[i].motor, queue[i].ms, 20); buzz(queue[i].hz, queue[i].ms); for (int j = i; j < queued - 1; j++) queue[j] = queue[j + 1]; queued--; i--; }
+}
+
+// ---------------- calibration ----------------
+void calibrateGyro() {
+  Serial.println("#calibrating gyro - hold still");
+  float sum[3] = {0, 0, 0}; int n = 0; int16_t a[3], g[3];
+  for (int i = 0; i < 500; i++) { if (mpuRead(a, g)) { sum[0] += g[0] / 16.4f; sum[1] += g[1] / 16.4f; sum[2] += g[2] / 16.4f; n++; } delay(2); }
+  if (n) for (int i = 0; i < 3; i++) gyroBias[i] = sum[i] / n;
+  joyCx = analogRead(PIN_JOY_X); joyCy = analogRead(PIN_JOY_Y);
+  Serial.printf("#bias %.2f %.2f %.2f  joy centre %d %d\n", gyroBias[0], gyroBias[1], gyroBias[2], joyCx, joyCy);
+}
+
+// ---------------- serial commands ----------------
+void handleCommand(const String& c) {
+  if (!c.length()) return;
+  char k = c[0]; const char* arg = c.c_str() + 1;
+  switch (k) {
+    case 'Z': yaw = 0; break;
+    case 'C': calibrateGyro(); break;
+    case 'V': motor(constrain(atoi(arg), 0, 255), 40, 60); break;
+    case 'L': digitalWrite(PIN_LED_MUZZLE, atoi(arg) ? HIGH : LOW); break;
+    case 'B': { int hz = atoi(arg); const char* comma = strchr(arg, ','); buzz(hz, comma ? atoi(comma + 1) : 50); } break;
+    case 'H': hitFeedback(atoi(arg)); break;
+    case 'A': ammo = constrain(atoi(arg), 0, 6); showAmmo(); break;
+    case 'R': buzz(600, 35); enqueue(300, 0, 820, 35); break;
+    default: break;
+  }
+}
+
+float joyAxis(int raw, int centre) {
+  float v = (raw - centre) / 2048.0f; v = constrain(v, -1.0f, 1.0f);
+  return fabsf(v) < JOY_DEADZONE ? 0.0f : v;
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(PIN_TRIGGER, INPUT_PULLUP); pinMode(PIN_BTN_RELOAD, INPUT_PULLUP); pinMode(PIN_BTN_JUMP, INPUT_PULLUP); pinMode(PIN_BTN_MODE, INPUT_PULLUP); pinMode(PIN_JOY_SW, INPUT_PULLUP);
+  pinMode(PIN_LED_MUZZLE, OUTPUT); pinMode(PIN_LED_STATUS, OUTPUT); for (int i = 0; i < 6; i++) pinMode(PIN_AMMO[i], OUTPUT);
+  analogReadResolution(12);
+  pwmSetup();
+  Wire.begin(PIN_SDA, PIN_SCL); Wire.setClock(400000);
+  mpuWrite(0x6B, 0x00);            // wake up
+  mpuWrite(0x1A, 0x03);            // DLPF 44 Hz
+  mpuWrite(0x19, 4);               // sample rate 1 kHz / (1+4) = 200 Hz
+  mpuWrite(0x1B, 0x18);            // gyro ±2000 deg/s (16.4 LSB per deg/s) — fast flicks do not saturate
+  mpuWrite(0x1C, 0x00);            // accel ±2 g       (16384 LSB per g)
+  delay(100);
+  calibrateGyro();
+  showAmmo();
+#if USE_BLE_HID
+  Keyboard.begin(); Mouse.begin();
+#endif
+  Serial.println("#FalconBlaster ready");
+  lastUs = micros();
+}
+
+void loop() {
+  // ---- commands from the PC ----
+  static String line;
+  while (Serial.available()) { char ch = Serial.read(); if (ch == '\n' || ch == '\r') { handleCommand(line); line = ""; } else if (line.length() < 32) line += ch; }
+
+  // ---- 1. input detection ----
+  int16_t ar[3], gr[3]; float a[3], g[3];
+  uint32_t nowUs = micros(); float dt = (nowUs - lastUs) * 1e-6f; if (dt <= 0 || dt > 0.1f) dt = 0.005f; lastUs = nowUs;
+  if (!mpuRead(ar, gr)) { delay(1); return; }
+  remap(ar, a, 1.0f / 16384.0f); remap(gr, g, 1.0f / 16.4f);
+  bool T = readDebounced(trig), B1 = readDebounced(bReload), B2 = readDebounced(bJump), B3 = readDebounced(bMode);
+  float jx = joyAxis(analogRead(PIN_JOY_X), joyCx), jy = -joyAxis(analogRead(PIN_JOY_Y), joyCy);
+
+  // ---- 2. data processing ----
+  for (int i = 0; i < 3; i++) { float v = g[i] - gyroBias[i]; if (fabsf(v) < DEADZONE) v = 0; gs[i] += (v - gs[i]) * (1.0f - SMOOTH); }
+  float pitchAcc = atan2f(a[0], sqrtf(a[1] * a[1] + a[2] * a[2])) * 57.2958f;
+  float rollAcc = atan2f(-a[1], a[2]) * 57.2958f;
+  float aN = sqrtf(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+  float k = fabsf(aN - 1.0f) < 0.15f ? ALPHA : 1.0f;                   // trust the accelerometer only near 1 g (not during recoil/shakes)
+  pitch = k * (pitch + (-gs[1]) * dt) + (1 - k) * pitchAcc;           // nose-up = positive
+  roll = k * (roll + (-gs[0]) * dt) + (1 - k) * rollAcc;
+  yaw += gs[2] * dt;                                                   // turning left = positive (drifts without a magnetometer)
+  accDx += -gs[2] * dt * SENS; accDy += gs[1] * dt * SENS;
+
+  // ---- local feedback on edges ----
+  static bool lastT = false, lastB1 = false, lastB3 = false;
+  if (T && !lastT) { if (ammo > 0) { ammo--; showAmmo(); fireFeedback(); } else buzz(300, 80); }
+  if (B1 && !lastB1) { buzz(600, 35); enqueue(700, 0, 820, 35); ammo = 6; showAmmo(); }
+  if (B3 && !lastB3) buzz(2000, 12);
+  lastT = T; lastB1 = B1; lastB3 = B3;
+
+  // ---- 3. send to PC at 100 Hz ----
+  if (nowUs - lastReportUs >= REPORT_US) {
+    lastReportUs = nowUs;
+    int dx = (int)roundf(accDx), dy = (int)roundf(accDy); accDx -= dx; accDy -= dy;
+    dx = constrain(dx, -127, 127); dy = constrain(dy, -127, 127);
+#if USE_BLE_HID
+    if (Keyboard.isConnected()) {
+      if (dx || dy) Mouse.move(dx, dy);
+      static bool hT = false, h1 = false, h2 = false, h3 = false, hw = false, ha = false, hs = false, hd = false;
+      auto key = [](bool now, bool& was, char k) { if (now && !was) Keyboard.press(k); if (!now && was) Keyboard.release(k); was = now; };
+      if (T && !hT) Mouse.press(MOUSE_LEFT); if (!T && hT) Mouse.release(MOUSE_LEFT); hT = T;
+      key(B1, h1, 'r'); key(B2, h2, ' '); key(B3, h3, 'q');
+      key(jy > 0.5f, hw, 'w'); key(jy < -0.5f, hs, 's'); key(jx < -0.5f, ha, 'a'); key(jx > 0.5f, hd, 'd');
+      digitalWrite(PIN_LED_STATUS, HIGH);
+    } else digitalWrite(PIN_LED_STATUS, (millis() / 300) & 1);
+#else
+    digitalWrite(PIN_LED_STATUS, HIGH);
+#endif
+    Serial.printf("$%.2f,%.2f,%.2f,%.3f,%.3f,%.3f,%.2f,%.2f,%.2f,%d,%d,%d,%d,%.2f,%.2f\n",
+                  g[0], g[1], g[2], a[0], a[1], a[2], yaw, pitch, roll, T, B1, B2, B3, jx, jy);
+  }
+
+  // ---- 5. feedback timers ----
+  serviceFeedback();
+}
+
+</script>
+<script type="text/plain" id="bridgeSrc">
+"""
+bridge.py — turn FalconBlaster serial telemetry into real mouse & keyboard input
+so ANY PC game (or the web simulator's game) can be played with the gun.
+
+    pip install pyserial pynput
+    python bridge.py --port COM5            # Windows
+    python bridge.py --port /dev/ttyUSB0    # Linux / macOS (/dev/cu.SLAB_USBtoUART)
+
+Mapping (same as the firmware's BLE HID mode):
+    gyro yaw/pitch rate  -> mouse movement      trigger -> left mouse button
+    reload button -> R    jump button -> Space   weapon button -> Q
+    joystick      -> W A S D (digital, 50 % threshold)
+Press Ctrl+C to stop. Close the web simulator's serial link first — only one program can own the port.
+"""
+import argparse, sys, time
+import serial
+from pynput.mouse import Controller as MouseController, Button
+from pynput.keyboard import Controller as KeyController, Key
+
+ap = argparse.ArgumentParser()
+ap.add_argument('--port', required=True)
+ap.add_argument('--baud', type=int, default=115200)
+ap.add_argument('--sens', type=float, default=12.0, help='mouse counts per degree (firmware default 12)')
+ap.add_argument('--invert-y', action='store_true')
+args = ap.parse_args()
+
+mouse, keys = MouseController(), KeyController()
+KEYMAP = {'reload': 'r', 'jump': Key.space, 'weapon': 'q', 'w': 'w', 'a': 'a', 's': 's', 'd': 'd'}
+held = {k: False for k in KEYMAP}
+trigger_held = False
+acc_dx = acc_dy = 0.0
+last_t = time.perf_counter()
+
+def set_key(name, now):
+    global held
+    if now and not held[name]:
+        keys.press(KEYMAP[name])
+    elif not now and held[name]:
+        keys.release(KEYMAP[name])
+    held[name] = now
+
+with serial.Serial(args.port, args.baud, timeout=1) as ser:
+    print(f'bridge: listening on {args.port} — move the gun')
+    ser.write(b'Z\n')  # re-centre yaw on start
+    try:
+        while True:
+            line = ser.readline().decode('ascii', 'ignore').strip()
+            if not line.startswith('$'):
+                if line.startswith('#'):
+                    print('device:', line[1:].strip())
+                continue
+            try:
+                v = [float(x) for x in line[1:].split(',')]
+            except ValueError:
+                continue
+            if len(v) < 15:
+                continue
+            gx, gy, gz, ax, ay, az, yaw, pitch, roll, trig, b1, b2, b3, jx, jy = v[:15]
+            now = time.perf_counter(); dt = min(0.05, now - last_t); last_t = now
+            # 3. send to PC — the same rate-to-counts mapping the firmware uses for BLE
+            acc_dx += -gz * dt * args.sens
+            acc_dy += (-1 if args.invert_y else 1) * gy * dt * args.sens
+            dx, dy = int(round(acc_dx)), int(round(acc_dy)); acc_dx -= dx; acc_dy -= dy
+            if dx or dy:
+                mouse.move(dx, dy)
+            t = trig >= 0.5
+            if t and not trigger_held:
+                mouse.press(Button.left)
+            elif not t and trigger_held:
+                mouse.release(Button.left)
+            trigger_held = t
+            set_key('reload', b1 >= 0.5); set_key('jump', b2 >= 0.5); set_key('weapon', b3 >= 0.5)
+            set_key('w', jy > 0.5); set_key('s', jy < -0.5); set_key('a', jx < -0.5); set_key('d', jx > 0.5)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if trigger_held:
+            mouse.release(Button.left)
+        for k, v in held.items():
+            if v:
+                keys.release(KEYMAP[k])
+        print('bridge: stopped')
+
+</script>
+<script>
+/* ============================================================
+   FalconGL — a tiny WebGL2 scene renderer (no dependencies)
+   Column-major matrices, quaternions [x,y,z,w], Y is up.
+   ============================================================ */
+const M4 = {
+  create() { const m = new Float32Array(16); m[0] = m[5] = m[10] = m[15] = 1; return m; },
+  identity(m) { m.fill(0); m[0] = m[5] = m[10] = m[15] = 1; return m; },
+  copy(o, a) { o.set(a); return o; },
+  mul(o, a, b) {
+    const a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3], a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
+    const a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11], a30 = a[12], a31 = a[13], a32 = a[14], a33 = a[15];
+    let b0 = b[0], b1 = b[1], b2 = b[2], b3 = b[3];
+    o[0] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30; o[1] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+    o[2] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32; o[3] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
+    b0 = b[4]; b1 = b[5]; b2 = b[6]; b3 = b[7];
+    o[4] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30; o[5] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+    o[6] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32; o[7] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
+    b0 = b[8]; b1 = b[9]; b2 = b[10]; b3 = b[11];
+    o[8] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30; o[9] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+    o[10] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32; o[11] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
+    b0 = b[12]; b1 = b[13]; b2 = b[14]; b3 = b[15];
+    o[12] = b0 * a00 + b1 * a10 + b2 * a20 + b3 * a30; o[13] = b0 * a01 + b1 * a11 + b2 * a21 + b3 * a31;
+    o[14] = b0 * a02 + b1 * a12 + b2 * a22 + b3 * a32; o[15] = b0 * a03 + b1 * a13 + b2 * a23 + b3 * a33;
+    return o;
+  },
+  perspective(o, fovy, aspect, near, far) {
+    const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+    o.fill(0); o[0] = f / aspect; o[5] = f; o[10] = (far + near) * nf; o[11] = -1; o[14] = 2 * far * near * nf; return o;
+  },
+  ortho(o, l, r, b, t, n, f) {
+    const lr = 1 / (l - r), bt = 1 / (b - t), nf = 1 / (n - f);
+    o.fill(0); o[0] = -2 * lr; o[5] = -2 * bt; o[10] = 2 * nf; o[12] = (l + r) * lr; o[13] = (t + b) * bt; o[14] = (f + n) * nf; o[15] = 1; return o;
+  },
+  lookAt(o, eye, c, up) {
+    let zx = eye[0] - c[0], zy = eye[1] - c[1], zz = eye[2] - c[2];
+    let len = Math.hypot(zx, zy, zz) || 1; zx /= len; zy /= len; zz /= len;
+    let xx = up[1] * zz - up[2] * zy, xy = up[2] * zx - up[0] * zz, xz = up[0] * zy - up[1] * zx;
+    len = Math.hypot(xx, xy, xz) || 1; xx /= len; xy /= len; xz /= len;
+    const yx = zy * xz - zz * xy, yy = zz * xx - zx * xz, yz = zx * xy - zy * xx;
+    o[0] = xx; o[1] = yx; o[2] = zx; o[3] = 0; o[4] = xy; o[5] = yy; o[6] = zy; o[7] = 0; o[8] = xz; o[9] = yz; o[10] = zz; o[11] = 0;
+    o[12] = -(xx * eye[0] + xy * eye[1] + xz * eye[2]); o[13] = -(yx * eye[0] + yy * eye[1] + yz * eye[2]); o[14] = -(zx * eye[0] + zy * eye[1] + zz * eye[2]); o[15] = 1;
+    return o;
+  },
+  compose(o, p, q, s) {
+    const x = q[0], y = q[1], z = q[2], w = q[3], x2 = x + x, y2 = y + y, z2 = z + z;
+    const xx = x * x2, xy = x * y2, xz = x * z2, yy = y * y2, yz = y * z2, zz = z * z2, wx = w * x2, wy = w * y2, wz = w * z2;
+    const sx = s[0], sy = s[1], sz = s[2];
+    o[0] = (1 - (yy + zz)) * sx; o[1] = (xy + wz) * sx; o[2] = (xz - wy) * sx; o[3] = 0;
+    o[4] = (xy - wz) * sy; o[5] = (1 - (xx + zz)) * sy; o[6] = (yz + wx) * sy; o[7] = 0;
+    o[8] = (xz + wy) * sz; o[9] = (yz - wx) * sz; o[10] = (1 - (xx + yy)) * sz; o[11] = 0;
+    o[12] = p[0]; o[13] = p[1]; o[14] = p[2]; o[15] = 1; return o;
+  },
+  invert(o, a) {
+    const a00 = a[0], a01 = a[1], a02 = a[2], a03 = a[3], a10 = a[4], a11 = a[5], a12 = a[6], a13 = a[7];
+    const a20 = a[8], a21 = a[9], a22 = a[10], a23 = a[11], a30 = a[12], a31 = a[13], a32 = a[14], a33 = a[15];
+    const b00 = a00 * a11 - a01 * a10, b01 = a00 * a12 - a02 * a10, b02 = a00 * a13 - a03 * a10, b03 = a01 * a12 - a02 * a11;
+    const b04 = a01 * a13 - a03 * a11, b05 = a02 * a13 - a03 * a12, b06 = a20 * a31 - a21 * a30, b07 = a20 * a32 - a22 * a30;
+    const b08 = a20 * a33 - a23 * a30, b09 = a21 * a32 - a22 * a31, b10 = a21 * a33 - a23 * a31, b11 = a22 * a33 - a23 * a32;
+    let det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
+    if (!det) return M4.identity(o);
+    det = 1 / det;
+    o[0] = (a11 * b11 - a12 * b10 + a13 * b09) * det; o[1] = (a02 * b10 - a01 * b11 - a03 * b09) * det;
+    o[2] = (a31 * b05 - a32 * b04 + a33 * b03) * det; o[3] = (a22 * b04 - a21 * b05 - a23 * b03) * det;
+    o[4] = (a12 * b08 - a10 * b11 - a13 * b07) * det; o[5] = (a00 * b11 - a02 * b08 + a03 * b07) * det;
+    o[6] = (a32 * b02 - a30 * b05 - a33 * b01) * det; o[7] = (a20 * b05 - a22 * b02 + a23 * b01) * det;
+    o[8] = (a10 * b10 - a11 * b08 + a13 * b06) * det; o[9] = (a01 * b08 - a00 * b10 - a03 * b06) * det;
+    o[10] = (a30 * b04 - a31 * b02 + a33 * b00) * det; o[11] = (a21 * b02 - a20 * b04 - a23 * b00) * det;
+    o[12] = (a11 * b07 - a10 * b09 - a12 * b06) * det; o[13] = (a00 * b09 - a01 * b07 + a02 * b06) * det;
+    o[14] = (a31 * b01 - a30 * b03 - a32 * b00) * det; o[15] = (a20 * b03 - a21 * b01 + a22 * b00) * det;
+    return o;
+  },
+  point(o, m, v) {
+    const x = v[0], y = v[1], z = v[2];
+    o[0] = m[0] * x + m[4] * y + m[8] * z + m[12]; o[1] = m[1] * x + m[5] * y + m[9] * z + m[13]; o[2] = m[2] * x + m[6] * y + m[10] * z + m[14]; return o;
+  },
+  dir(o, m, v) {
+    const x = v[0], y = v[1], z = v[2];
+    o[0] = m[0] * x + m[4] * y + m[8] * z; o[1] = m[1] * x + m[5] * y + m[9] * z; o[2] = m[2] * x + m[6] * y + m[10] * z; return o;
+  },
+  normal3(o, m) {
+    const a00 = m[0], a01 = m[1], a02 = m[2], a10 = m[4], a11 = m[5], a12 = m[6], a20 = m[8], a21 = m[9], a22 = m[10];
+    const b01 = a22 * a11 - a12 * a21, b11 = -a22 * a10 + a12 * a20, b21 = a21 * a10 - a11 * a20;
+    let det = a00 * b01 + a01 * b11 + a02 * b21;
+    if (!det) { o.fill(0); o[0] = o[4] = o[8] = 1; return o; }
+    det = 1 / det;
+    o[0] = b01 * det; o[1] = (-a22 * a01 + a02 * a21) * det; o[2] = (a12 * a01 - a02 * a11) * det;
+    o[3] = b11 * det; o[4] = (a22 * a00 - a02 * a20) * det; o[5] = (-a12 * a00 + a02 * a10) * det;
+    o[6] = b21 * det; o[7] = (-a21 * a00 + a01 * a20) * det; o[8] = (a11 * a00 - a01 * a10) * det;
+    return o;
+  }
+};
+const V3 = {
+  add(a, b) { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; },
+  sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; },
+  scale(a, s) { return [a[0] * s, a[1] * s, a[2] * s]; },
+  dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; },
+  cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; },
+  len(a) { return Math.hypot(a[0], a[1], a[2]); },
+  norm(a) { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; },
+  lerp(a, b, t) { return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]; },
+  dist(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]); }
+};
+const Q = {
+  ident() { return [0, 0, 0, 1]; },
+  axisAngle(axis, rad) { const s = Math.sin(rad / 2); return [axis[0] * s, axis[1] * s, axis[2] * s, Math.cos(rad / 2)]; },
+  mul(a, b) {
+    const ax = a[0], ay = a[1], az = a[2], aw = a[3], bx = b[0], by = b[1], bz = b[2], bw = b[3];
+    return [ax * bw + aw * bx + ay * bz - az * by, ay * bw + aw * by + az * bx - ax * bz, az * bw + aw * bz + ax * by - ay * bx, aw * bw - ax * bx - ay * by - az * bz];
+  },
+  conj(q) { return [-q[0], -q[1], -q[2], q[3]]; },
+  norm(q) { const l = Math.hypot(q[0], q[1], q[2], q[3]) || 1; return [q[0] / l, q[1] / l, q[2] / l, q[3] / l]; },
+  /* yaw about Y, then pitch about X, then roll about Z (intrinsic YXZ) */
+  euler(yaw, pitch, roll) { return Q.mul(Q.mul(Q.axisAngle([0, 1, 0], yaw), Q.axisAngle([1, 0, 0], pitch)), Q.axisAngle([0, 0, 1], roll)); },
+  rotate(q, v) {
+    const qx = q[0], qy = q[1], qz = q[2], qw = q[3];
+    const tx = 2 * (qy * v[2] - qz * v[1]), ty = 2 * (qz * v[0] - qx * v[2]), tz = 2 * (qx * v[1] - qy * v[0]);
+    return [v[0] + qw * tx + (qy * tz - qz * ty), v[1] + qw * ty + (qz * tx - qx * tz), v[2] + qw * tz + (qx * ty - qy * tx)];
+  },
+  /* quaternion from orthonormal column vectors (right, up, back) */
+  fromCols(x, y, z) {
+    const m00 = x[0], m01 = y[0], m02 = z[0], m10 = x[1], m11 = y[1], m12 = z[1], m20 = x[2], m21 = y[2], m22 = z[2];
+    const tr = m00 + m11 + m22; let qx, qy, qz, qw;
+    if (tr > 0) { const s = Math.sqrt(tr + 1) * 2; qw = 0.25 * s; qx = (m21 - m12) / s; qy = (m02 - m20) / s; qz = (m10 - m01) / s; }
+    else if (m00 > m11 && m00 > m22) { const s = Math.sqrt(1 + m00 - m11 - m22) * 2; qw = (m21 - m12) / s; qx = 0.25 * s; qy = (m01 + m10) / s; qz = (m02 + m20) / s; }
+    else if (m11 > m22) { const s = Math.sqrt(1 + m11 - m00 - m22) * 2; qw = (m02 - m20) / s; qx = (m01 + m10) / s; qy = 0.25 * s; qz = (m12 + m21) / s; }
+    else { const s = Math.sqrt(1 + m22 - m00 - m11) * 2; qw = (m10 - m01) / s; qx = (m02 + m20) / s; qy = (m12 + m21) / s; qz = 0.25 * s; }
+    return Q.norm([qx, qy, qz, qw]);
+  },
+  slerpTo(a, b, t) { /* nlerp is enough for small steps */
+    let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]; const s = d < 0 ? -1 : 1;
+    return Q.norm([a[0] + (b[0] * s - a[0]) * t, a[1] + (b[1] * s - a[1]) * t, a[2] + (b[2] * s - a[2]) * t, a[3] + (b[3] * s - a[3]) * t]);
+  }
+};
+
+/* ---------------- scene graph ---------------- */
+class Node {
+  constructor(name = '') {
+    this.name = name; this.pos = [0, 0, 0]; this.rot = [0, 0, 0, 1]; this.scl = [1, 1, 1];
+    this.children = []; this.parent = null; this.visible = true; this.userData = {};
+    this.local = M4.create(); this.world = M4.create();
+  }
+  add(c) { if (c.parent) c.parent.remove(c); c.parent = this; this.children.push(c); return c; }
+  remove(c) { const i = this.children.indexOf(c); if (i >= 0) this.children.splice(i, 1); c.parent = null; return c; }
+  setEuler(yaw, pitch, roll) { this.rot = Q.euler(yaw, pitch, roll); return this; }
+  updateWorld(parentWorld) {
+    M4.compose(this.local, this.pos, this.rot, this.scl);
+    if (parentWorld) M4.mul(this.world, parentWorld, this.local); else this.world.set(this.local);
+    for (const c of this.children) c.updateWorld(this.world);
+  }
+  worldPos() { return [this.world[12], this.world[13], this.world[14]]; }
+  traverse(fn) { fn(this); for (const c of this.children) c.traverse(fn); }
+}
+class Mesh extends Node {
+  constructor(geo, mat, name = '') {
+    super(name); this.geo = geo;
+    this.mat = Object.assign({ color: [1, 1, 1], emissive: [0, 0, 0], opacity: 1, shininess: 40, spec: 0.3, fresnel: 0.18, tex: null, unlit: false, castShadow: true, receiveShadow: true, doubleSide: false, pickable: false }, mat || {});
+  }
+}
+class Camera extends Node {
+  constructor(fov = 60, near = 0.02, far = 80) { super('camera'); this.fov = fov; this.near = near; this.far = far; this.proj = M4.create(); this.view = M4.create(); this.viewProj = M4.create(); }
+  updateProj(aspect) { M4.perspective(this.proj, this.fov * Math.PI / 180, aspect, this.near, this.far); }
+  updateView() { M4.invert(this.view, this.world); M4.mul(this.viewProj, this.proj, this.view); }
+  lookAt(eye, target) {
+    const z = V3.norm(V3.sub(eye, target)); let x = V3.cross([0, 1, 0], z); if (V3.len(x) < 1e-6) x = [1, 0, 0]; x = V3.norm(x); const y = V3.cross(z, x);
+    this.pos = eye.slice(); this.rot = Q.fromCols(x, y, z);
+  }
+  forward() { return [-this.world[8], -this.world[9], -this.world[10]]; }
+  project(p, W, H) {
+    const m = this.viewProj; const x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12], y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
+    const w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+    if (w <= 0) return null; const nx = x / w, ny = y / w;
+    return { x: (nx * 0.5 + 0.5) * W, y: (1 - (ny * 0.5 + 0.5)) * H, w, on: nx > -1.05 && nx < 1.05 && ny > -1.05 && ny < 1.05 };
+  }
+}
+
+/* ---------------- geometry ---------------- */
+const Geo = (() => {
+  function pack(pos, nor, uv, idx) {
+    return { pos: new Float32Array(pos), nor: new Float32Array(nor), uv: new Float32Array(uv), idx: pos.length / 3 > 65000 ? new Uint32Array(idx) : new Uint16Array(idx) };
+  }
+  function box(w, h, d) {
+    const x = w / 2, y = h / 2, z = d / 2, pos = [], nor = [], uv = [], idx = [];
+    const faces = [
+      [[1, 0, 0], [x, -y, -z], [x, -y, z], [x, y, z], [x, y, -z]], [[-1, 0, 0], [-x, -y, z], [-x, -y, -z], [-x, y, -z], [-x, y, z]],
+      [[0, 1, 0], [-x, y, -z], [x, y, -z], [x, y, z], [-x, y, z]], [[0, -1, 0], [-x, -y, z], [x, -y, z], [x, -y, -z], [-x, -y, -z]],
+      [[0, 0, 1], [-x, -y, z], [x, -y, z], [x, y, z], [-x, y, z]], [[0, 0, -1], [x, -y, -z], [-x, -y, -z], [-x, y, -z], [x, y, -z]]];
+    for (const f of faces) { const b = pos.length / 3; for (let i = 1; i <= 4; i++) { pos.push(...f[i]); nor.push(...f[0]); } uv.push(0, 0, 1, 0, 1, 1, 0, 1); idx.push(b, b + 2, b + 1, b, b + 3, b + 2); }
+    return pack(pos, nor, uv, idx);
+  }
+  function cylinder(rt, rb, h, seg = 24, caps = true) {
+    const pos = [], nor = [], uv = [], idx = [], slope = (rb - rt) / h;
+    for (let i = 0; i <= seg; i++) {
+      const a = i / seg * Math.PI * 2, c = Math.cos(a), s = Math.sin(a), nl = Math.hypot(1, slope);
+      pos.push(c * rt, h / 2, s * rt); nor.push(c / nl, slope / nl, s / nl); uv.push(i / seg, 1);
+      pos.push(c * rb, -h / 2, s * rb); nor.push(c / nl, slope / nl, s / nl); uv.push(i / seg, 0);
+    }
+    for (let i = 0; i < seg; i++) { const b = i * 2; idx.push(b, b + 2, b + 1, b + 1, b + 2, b + 3); }
+    if (caps) for (const [yy, r, ny] of [[h / 2, rt, 1], [-h / 2, rb, -1]]) {
+      if (r <= 0) continue; const c0 = pos.length / 3; pos.push(0, yy, 0); nor.push(0, ny, 0); uv.push(0.5, 0.5);
+      for (let i = 0; i <= seg; i++) { const a = i / seg * Math.PI * 2, c = Math.cos(a), s = Math.sin(a); pos.push(c * r, yy, s * r); nor.push(0, ny, 0); uv.push(c * 0.5 + 0.5, s * 0.5 + 0.5); }
+      for (let i = 0; i < seg; i++) { if (ny > 0) idx.push(c0, c0 + 2 + i, c0 + 1 + i); else idx.push(c0, c0 + 1 + i, c0 + 2 + i); }
+    }
+    return pack(pos, nor, uv, idx);
+  }
+  function sphere(r, ws = 16, hs = 12) {
+    const pos = [], nor = [], uv = [], idx = [];
+    for (let y = 0; y <= hs; y++) { const v = y / hs, th = v * Math.PI; for (let x = 0; x <= ws; x++) { const u = x / ws, ph = u * Math.PI * 2; const nx = Math.sin(th) * Math.cos(ph), ny = Math.cos(th), nz = Math.sin(th) * Math.sin(ph); pos.push(nx * r, ny * r, nz * r); nor.push(nx, ny, nz); uv.push(u, 1 - v); } }
+    for (let y = 0; y < hs; y++) for (let x = 0; x < ws; x++) { const a = y * (ws + 1) + x, b = a + ws + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
+    return pack(pos, nor, uv, idx);
+  }
+  function ground(w, d, rep = 1) {
+    const x = w / 2, z = d / 2;
+    return pack([-x, 0, z, x, 0, z, x, 0, -z, -x, 0, -z], [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0], [0, 0, rep, 0, rep, rep, 0, rep], [0, 1, 2, 0, 2, 3]);
+  }
+  function quad(w, h) { /* facing +Z, uv */
+    const x = w / 2, y = h / 2;
+    return pack([-x, -y, 0, x, -y, 0, x, y, 0, -x, y, 0], [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], [0, 0, 1, 0, 1, 1, 0, 1], [0, 1, 2, 0, 2, 3]);
+  }
+  function signedArea(p) { let a = 0; for (let i = 0; i < p.length; i++) { const j = (i + 1) % p.length; a += p[i][0] * p[j][1] - p[j][0] * p[i][1]; } return a / 2; }
+  function triangulate(p) {
+    const n = p.length, idx = []; for (let i = 0; i < n; i++) idx.push(i); const tris = []; let guard = 0;
+    const inTri = (q, a, b, c) => { const s1 = (b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0]), s2 = (c[0] - b[0]) * (q[1] - b[1]) - (c[1] - b[1]) * (q[0] - b[0]), s3 = (a[0] - c[0]) * (q[1] - c[1]) - (a[1] - c[1]) * (q[0] - c[0]); return s1 > 1e-12 && s2 > 1e-12 && s3 > 1e-12; };
+    while (idx.length > 3 && guard++ < 20000) {
+      let found = false;
+      for (let i = 0; i < idx.length; i++) {
+        const i0 = idx[(i + idx.length - 1) % idx.length], i1 = idx[i], i2 = idx[(i + 1) % idx.length], a = p[i0], b = p[i1], c = p[i2];
+        const cr = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+        if (cr < -1e-12) continue;
+        let inside = false; for (const j of idx) { if (j === i0 || j === i1 || j === i2) continue; if (inTri(p[j], a, b, c)) { inside = true; break; } }
+        if (inside) continue;
+        tris.push(i0, i1, i2); idx.splice(i, 1); found = true; break;
+      }
+      if (!found) break;
+    }
+    if (idx.length === 3) tris.push(idx[0], idx[1], idx[2]);
+    return tris;
+  }
+  /* replace each corner by a small curve (quadratic through the corner) */
+  function round(points, r, steps = 4) {
+    const n = points.length, out = [];
+    for (let i = 0; i < n; i++) {
+      const p = points[i], a = points[(i + n - 1) % n], b = points[(i + 1) % n];
+      const da = [a[0] - p[0], a[1] - p[1]], db = [b[0] - p[0], b[1] - p[1]], la = Math.hypot(...da), lb = Math.hypot(...db);
+      const rr = Math.min(r, la * 0.45, lb * 0.45);
+      const p1 = [p[0] + da[0] / la * rr, p[1] + da[1] / la * rr], p2 = [p[0] + db[0] / lb * rr, p[1] + db[1] / lb * rr];
+      for (let s = 0; s <= steps; s++) { const t = s / steps, mt = 1 - t; out.push([mt * mt * p1[0] + 2 * mt * t * p[0] + t * t * p2[0], mt * mt * p1[1] + 2 * mt * t * p[1] + t * t * p2[1]]); }
+    }
+    return out;
+  }
+  /* polygon in XY (any winding) extruded along Z, centred */
+  function prism(points, depth) {
+    let p = points.slice(); if (signedArea(p) < 0) p.reverse();
+    const n = p.length, hz = depth / 2, pos = [], nor = [], uv = [], idx = [];
+    let minx = 1e9, maxx = -1e9, miny = 1e9, maxy = -1e9; for (const q of p) { minx = Math.min(minx, q[0]); maxx = Math.max(maxx, q[0]); miny = Math.min(miny, q[1]); maxy = Math.max(maxy, q[1]); }
+    const su = (maxx - minx) || 1, sv = (maxy - miny) || 1;
+    const tris = triangulate(p);
+    // front cap (+Z)
+    let base = pos.length / 3; for (const q of p) { pos.push(q[0], q[1], hz); nor.push(0, 0, 1); uv.push((q[0] - minx) / su, (q[1] - miny) / sv); }
+    for (let i = 0; i < tris.length; i += 3) idx.push(base + tris[i], base + tris[i + 1], base + tris[i + 2]);
+    base = pos.length / 3; for (const q of p) { pos.push(q[0], q[1], -hz); nor.push(0, 0, -1); uv.push((q[0] - minx) / su, (q[1] - miny) / sv); }
+    for (let i = 0; i < tris.length; i += 3) idx.push(base + tris[i], base + tris[i + 2], base + tris[i + 1]);
+    // sides
+    let run = 0;
+    for (let i = 0; i < n; i++) {
+      const a = p[i], b = p[(i + 1) % n], ex = b[0] - a[0], ey = b[1] - a[1], el = Math.hypot(ex, ey) || 1, nx = ey / el, ny = -ex / el;
+      const s = pos.length / 3;
+      pos.push(a[0], a[1], hz, b[0], b[1], hz, b[0], b[1], -hz, a[0], a[1], -hz);
+      for (let k = 0; k < 4; k++) nor.push(nx, ny, 0);
+      uv.push(run, 1, run + el, 1, run + el, 0, run, 0); run += el;
+      idx.push(s, s + 2, s + 1, s, s + 3, s + 2);
+    }
+    return pack(pos, nor, uv, idx);
+  }
+  /* tube along a polyline (parallel-transport frames) */
+  function tube(path, r, radial = 6) {
+    const pos = [], nor = [], uv = [], idx = [], n = path.length;
+    let nrm = null;
+    for (let i = 0; i < n; i++) {
+      const t = V3.norm(V3.sub(path[Math.min(i + 1, n - 1)], path[Math.max(i - 1, 0)]));
+      if (!nrm) { let a = Math.abs(t[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]; nrm = V3.norm(V3.cross(t, a)); }
+      else { nrm = V3.norm(V3.sub(nrm, V3.scale(t, V3.dot(nrm, t)))); }
+      const bn = V3.cross(t, nrm);
+      for (let k = 0; k <= radial; k++) { const a = k / radial * Math.PI * 2, c = Math.cos(a), s = Math.sin(a); const d = [nrm[0] * c + bn[0] * s, nrm[1] * c + bn[1] * s, nrm[2] * c + bn[2] * s]; pos.push(path[i][0] + d[0] * r, path[i][1] + d[1] * r, path[i][2] + d[2] * r); nor.push(...d); uv.push(k / radial, i / (n - 1)); }
+    }
+    for (let i = 0; i < n - 1; i++) for (let k = 0; k < radial; k++) { const a = i * (radial + 1) + k, b = a + radial + 1; idx.push(a, b, a + 1, a + 1, b, b + 1); }
+    return pack(pos, nor, uv, idx);
+  }
+  function torus(R, r, seg = 32, tseg = 10) {
+    const pos = [], nor = [], uv = [], idx = [];
+    for (let i = 0; i <= seg; i++) { const u = i / seg * Math.PI * 2; for (let j = 0; j <= tseg; j++) { const v = j / tseg * Math.PI * 2; const cx = Math.cos(u), sx = Math.sin(u); pos.push((R + r * Math.cos(v)) * cx, r * Math.sin(v), (R + r * Math.cos(v)) * sx); nor.push(Math.cos(v) * cx, Math.sin(v), Math.cos(v) * sx); uv.push(i / seg, j / tseg); } }
+    for (let i = 0; i < seg; i++) for (let j = 0; j < tseg; j++) { const a = i * (tseg + 1) + j, b = a + tseg + 1; idx.push(a, a + 1, b, a + 1, b + 1, b); }
+    return pack(pos, nor, uv, idx);
+  }
+  return { box, cylinder, sphere, ground, quad, prism, round, tube, torus };
+})();
+
+/* ---------------- renderer ---------------- */
+const VS = `#version 300 es
+precision highp float;
+layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNor; layout(location=2) in vec2 aUv;
+uniform mat4 uProj, uView, uModel, uLightVP; uniform mat3 uNormal;
+out vec3 vWP; out vec3 vN; out vec2 vUv; out vec4 vSC;
+void main(){ vec4 wp = uModel*vec4(aPos,1.0); vWP = wp.xyz; vN = normalize(uNormal*aNor); vUv = aUv; vSC = uLightVP*wp; gl_Position = uProj*uView*wp; }`;
+const FS = `#version 300 es
+precision highp float; precision highp sampler2DShadow;
+in vec3 vWP; in vec3 vN; in vec2 vUv; in vec4 vSC;
+uniform vec3 uColor, uEmissive, uCamPos, uLightDir, uLightColor, uHemiSky, uHemiGround, uFogColor, uPLPos, uPLColor;
+uniform float uOpacity, uShininess, uSpec, uFresnel, uFogNear, uFogFar, uPLRange, uUseTex, uUnlit, uRecv, uTexel;
+uniform sampler2D uTex; uniform sampler2DShadow uShadow;
+out vec4 frag;
+float shadowTerm(){
+  vec3 p = vSC.xyz / vSC.w * 0.5 + 0.5;
+  if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z > 1.0) return 1.0;
+  float s = 0.0;
+  for (int x = -1; x <= 1; x++) for (int y = -1; y <= 1; y++) s += texture(uShadow, vec3(p.xy + vec2(float(x), float(y)) * uTexel, p.z - 0.0018));
+  return s / 9.0;
+}
+void main(){
+  vec3 base = uColor; float alpha = uOpacity;
+  if (uUseTex > 0.5) { vec4 t = texture(uTex, vUv); base *= t.rgb; alpha *= t.a; }
+  vec3 N = normalize(vN); if (!gl_FrontFacing) N = -N;
+  vec3 V = normalize(uCamPos - vWP);
+  vec3 col;
+  if (uUnlit > 0.5) { col = base + uEmissive; }
+  else {
+    float hemi = N.y * 0.5 + 0.5; vec3 amb = mix(uHemiGround, uHemiSky, hemi);
+    float sh = uRecv > 0.5 ? shadowTerm() : 1.0;
+    float ndl = clamp((dot(N, uLightDir) + 0.35) / 1.35, 0.0, 1.0);
+    vec3 H = normalize(uLightDir + V); float spec = pow(max(dot(N, H), 0.0), uShininess) * uSpec;
+    col = base * (amb + uLightColor * ndl * sh) + uLightColor * spec * sh;
+    vec3 L2 = uPLPos - vWP; float d = length(L2); L2 /= max(d, 1e-4);
+    float att = clamp(1.0 - d / max(uPLRange, 1e-3), 0.0, 1.0); att *= att;
+    col += base * uPLColor * max(dot(N, L2), 0.0) * att;
+    float fr = pow(1.0 - max(dot(N, V), 0.0), 3.0) * uFresnel; col += fr * mix(uHemiGround, uHemiSky, 0.75);
+    col += uEmissive;
+  }
+  float fog = clamp((length(uCamPos - vWP) - uFogNear) / max(uFogFar - uFogNear, 0.001), 0.0, 1.0);
+  col = mix(col, uFogColor, fog);
+  frag = vec4(col, alpha);
+}`;
+const VS_DEPTH = `#version 300 es
+layout(location=0) in vec3 aPos; uniform mat4 uLightVP, uModel;
+void main(){ gl_Position = uLightVP * uModel * vec4(aPos, 1.0); }`;
+const FS_DEPTH = `#version 300 es
+precision mediump float; out vec4 o; void main(){ o = vec4(1.0); }`;
+const VS_PICK = `#version 300 es
+layout(location=0) in vec3 aPos; uniform mat4 uVP, uModel;
+void main(){ gl_Position = uVP * uModel * vec4(aPos, 1.0); }`;
+const FS_PICK = `#version 300 es
+precision mediump float; uniform vec4 uId; out vec4 o; void main(){ o = uId; }`;
+
+class Renderer {
+  constructor(canvas) {
+    const gl = this.gl = canvas.getContext('webgl2', { antialias: true, alpha: false, powerPreference: 'high-performance' });
+    if (!gl) throw new Error('WebGL2 unavailable');
+    this.canvas = canvas; this.W = 1; this.H = 1;
+    this.prog = this._program(VS, FS); this.depthProg = this._program(VS_DEPTH, FS_DEPTH); this.pickProg = this._program(VS_PICK, FS_PICK);
+    this.u = {}; for (const n of ['uProj', 'uView', 'uModel', 'uLightVP', 'uNormal', 'uColor', 'uEmissive', 'uCamPos', 'uLightDir', 'uLightColor', 'uHemiSky', 'uHemiGround', 'uFogColor', 'uPLPos', 'uPLColor', 'uOpacity', 'uShininess', 'uSpec', 'uFresnel', 'uFogNear', 'uFogFar', 'uPLRange', 'uUseTex', 'uUnlit', 'uRecv', 'uTexel', 'uTex', 'uShadow']) this.u[n] = gl.getUniformLocation(this.prog, n);
+    this.ud = { vp: gl.getUniformLocation(this.depthProg, 'uLightVP'), model: gl.getUniformLocation(this.depthProg, 'uModel') };
+    this.up = { vp: gl.getUniformLocation(this.pickProg, 'uVP'), model: gl.getUniformLocation(this.pickProg, 'uModel'), id: gl.getUniformLocation(this.pickProg, 'uId') };
+    this.shadowSize = 2048; this._initShadow();
+    this.white = this._solidTex([255, 255, 255, 255]);
+    this.lightVP = M4.create(); this._lv = M4.create(); this._lp = M4.create(); this._n3 = new Float32Array(9);
+    this.pick = null; this.drawCalls = 0;
+    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
+  }
+  _program(vs, fs) {
+    const gl = this.gl, mk = (t, s) => { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)); return sh; };
+    const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p;
+  }
+  _solidTex(rgba) { const gl = this.gl, t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(rgba)); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST); return t; }
+  _initShadow() {
+    const gl = this.gl, s = this.shadowSize, t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, s, s, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL);
+    const fb = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, t, 0);
+    gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE);
+    this.shadowOK = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    this.shadowTex = t; this.shadowFB = fb;
+  }
+  geometry(g) {
+    const gl = this.gl, vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+    const buf = (loc, data, size) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0); };
+    buf(0, g.pos, 3); buf(1, g.nor, 3); buf(2, g.uv, 2);
+    const ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, g.idx, gl.STATIC_DRAW);
+    gl.bindVertexArray(null);
+    return { vao, count: g.idx.length, type: g.idx instanceof Uint32Array ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT };
+  }
+  texture(src, { repeat = false, mips = true } = {}) {
+    const gl = this.gl, t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, src);
+    if (mips) { gl.generateMipmap(gl.TEXTURE_2D); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); } else gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, repeat ? gl.REPEAT : gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, repeat ? gl.REPEAT : gl.CLAMP_TO_EDGE);
+    const ext = gl.getExtension('EXT_texture_filter_anisotropic'); if (ext) gl.texParameterf(gl.TEXTURE_2D, ext.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, gl.getParameter(ext.MAX_TEXTURE_MAX_ANISOTROPY_EXT)));
+    return t;
+  }
+  resize(w, h, dpr) {
+    const W = Math.max(1, Math.floor(w * dpr)), H = Math.max(1, Math.floor(h * dpr));
+    if (this.canvas.width !== W || this.canvas.height !== H) { this.canvas.width = W; this.canvas.height = H; this.pick = null; }
+    this.W = W; this.H = H;
+  }
+  /* collect visible meshes */
+  _collect(scene) {
+    const op = [], tr = [];
+    const walk = (n, hidden) => { hidden = hidden || !n.visible; if (!hidden && n.geo) (n.mat.opacity < 0.999 || n.mat.alphaTex ? tr : op).push(n); for (const c of n.children) walk(c, hidden); };
+    walk(scene, false); return { op, tr };
+  }
+  render(scene, cam, L) {
+    const gl = this.gl; this.drawCalls = 0;
+    const { op, tr } = this._collect(scene);
+    // ---- shadow pass
+    const ld = V3.norm(L.lightDir);
+    if (this.shadowOK && L.shadow) {
+      const c = L.shadow.center, s = L.shadow.size, eye = V3.add(c, V3.scale(ld, L.shadow.dist || s * 2));
+      M4.lookAt(this._lv, eye, c, Math.abs(ld[1]) > 0.95 ? [0, 0, -1] : [0, 1, 0]);
+      M4.ortho(this._lp, -s, s, -s, s, 0.05, (L.shadow.dist || s * 2) * 2 + s);
+      M4.mul(this.lightVP, this._lp, this._lv);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.shadowFB); gl.viewport(0, 0, this.shadowSize, this.shadowSize);
+      gl.clear(gl.DEPTH_BUFFER_BIT); gl.useProgram(this.depthProg); gl.uniformMatrix4fv(this.ud.vp, false, this.lightVP);
+      gl.enable(gl.CULL_FACE); gl.cullFace(gl.FRONT); gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(2, 4);
+      for (const m of op) { if (!m.mat.castShadow) continue; gl.uniformMatrix4fv(this.ud.model, false, m.world); gl.bindVertexArray(m.geo.vao); gl.drawElements(gl.TRIANGLES, m.geo.count, m.geo.type, 0); this.drawCalls++; }
+      gl.disable(gl.POLYGON_OFFSET_FILL); gl.cullFace(gl.BACK);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    } else M4.identity(this.lightVP);
+    // ---- main pass
+    gl.viewport(0, 0, this.W, this.H);
+    const bg = L.background; gl.clearColor(bg[0], bg[1], bg[2], 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(this.prog); const u = this.u;
+    gl.uniformMatrix4fv(u.uProj, false, cam.proj); gl.uniformMatrix4fv(u.uView, false, cam.view); gl.uniformMatrix4fv(u.uLightVP, false, this.lightVP);
+    const cp = cam.worldPos(); gl.uniform3f(u.uCamPos, cp[0], cp[1], cp[2]);
+    gl.uniform3f(u.uLightDir, ld[0], ld[1], ld[2]); gl.uniform3fv(u.uLightColor, L.lightColor); gl.uniform3fv(u.uHemiSky, L.hemiSky); gl.uniform3fv(u.uHemiGround, L.hemiGround);
+    gl.uniform3fv(u.uFogColor, L.fogColor || bg); gl.uniform1f(u.uFogNear, L.fogNear ?? 1e6); gl.uniform1f(u.uFogFar, L.fogFar ?? 1e6 + 1);
+    const pl = L.point || { pos: [0, 0, 0], color: [0, 0, 0], range: 1 }; gl.uniform3fv(u.uPLPos, pl.pos); gl.uniform3fv(u.uPLColor, pl.color); gl.uniform1f(u.uPLRange, pl.range);
+    gl.uniform1f(u.uTexel, 1 / this.shadowSize);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.shadowTex); gl.uniform1i(u.uShadow, 1);
+    gl.activeTexture(gl.TEXTURE0); gl.uniform1i(u.uTex, 0);
+    gl.depthMask(true); gl.disable(gl.BLEND);
+    for (const m of op) this._draw(m);
+    if (tr.length) {
+      const cpv = cp; tr.sort((a, b) => V3.dist(b.worldPos(), cpv) - V3.dist(a.worldPos(), cpv));
+      gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
+      for (const m of tr) this._draw(m);
+      gl.depthMask(true); gl.disable(gl.BLEND);
+    }
+    gl.disable(gl.CULL_FACE);
+  }
+  _draw(m) {
+    const gl = this.gl, u = this.u, mt = m.mat;
+    gl.uniformMatrix4fv(u.uModel, false, m.world); gl.uniformMatrix3fv(u.uNormal, false, M4.normal3(this._n3, m.world));
+    gl.uniform3fv(u.uColor, mt.color); gl.uniform3fv(u.uEmissive, mt.emissive); gl.uniform1f(u.uOpacity, mt.opacity);
+    gl.uniform1f(u.uShininess, mt.shininess); gl.uniform1f(u.uSpec, mt.spec); gl.uniform1f(u.uFresnel, mt.fresnel);
+    gl.uniform1f(u.uUseTex, mt.tex ? 1 : 0); gl.uniform1f(u.uUnlit, mt.unlit ? 1 : 0); gl.uniform1f(u.uRecv, mt.receiveShadow ? 1 : 0);
+    gl.bindTexture(gl.TEXTURE_2D, mt.tex || this.white);
+    if (mt.doubleSide) gl.disable(gl.CULL_FACE); else { gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); }
+    gl.bindVertexArray(m.geo.vao); gl.drawElements(gl.TRIANGLES, m.geo.count, m.geo.type, 0); this.drawCalls++;
+  }
+  /* colour-id picking: returns the mesh under (x,y) in CSS px, among mat.pickable meshes */
+  pickAt(scene, cam, x, y, dpr) {
+    const gl = this.gl, W = Math.max(1, this.W >> 1), H = Math.max(1, this.H >> 1);
+    if (!this.pick || this.pick.W !== W || this.pick.H !== H) {
+      if (this.pick) { gl.deleteFramebuffer(this.pick.fb); gl.deleteTexture(this.pick.tex); gl.deleteRenderbuffer(this.pick.rb); }
+      const fb = gl.createFramebuffer(), tex = gl.createTexture(), rb = gl.createRenderbuffer();
+      gl.bindTexture(gl.TEXTURE_2D, tex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.bindRenderbuffer(gl.RENDERBUFFER, rb); gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, W, H);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fb); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rb);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null); this.pick = { fb, tex, rb, W, H };
+    }
+    const list = []; scene.traverse(n => { if (n.geo && n.mat.pickable && n.visible) list.push(n); });
+    const vis = new Set(); const walk = (n, hidden) => { hidden = hidden || !n.visible; if (!hidden && n.geo) vis.add(n); for (const c of n.children) walk(c, hidden); }; walk(scene, false);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.pick.fb); gl.viewport(0, 0, W, H); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(this.pickProg); gl.uniformMatrix4fv(this.up.vp, false, cam.viewProj); gl.disable(gl.BLEND); gl.enable(gl.CULL_FACE); gl.depthMask(true);
+    let id = 0; const map = [];
+    for (const m of list) { if (!vis.has(m)) continue; id++; map[id] = m; gl.uniform4f(this.up.id, (id & 255) / 255, ((id >> 8) & 255) / 255, ((id >> 16) & 255) / 255, 1); gl.uniformMatrix4fv(this.up.model, false, m.world); gl.bindVertexArray(m.geo.vao); gl.drawElements(gl.TRIANGLES, m.geo.count, m.geo.type, 0); }
+    const px = new Uint8Array(4); gl.readPixels(Math.floor(x * dpr / 2), Math.floor(H - y * dpr / 2 - 1), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.disable(gl.CULL_FACE);
+    const got = px[0] | (px[1] << 8) | (px[2] << 16); return got ? map[got] : null;
+  }
+}
+/* ============================================================
+   Gun model — Team Falcon FPS controller (toy-blaster form)
+   Gun-local frame: forward = -Z, up = +Y, right = +X. Units: metres.
+   Profiles are drawn in (u = forward, v = up) and extruded along X.
+   ============================================================ */
+const PINMAP = [
+  ['MPU6050 SDA / SCL / INT', 'GPIO21 / GPIO22 / GPIO19', 'I²C 400 kHz; INT for data-ready', 'imu'],
+  ['Trigger microswitch', 'GPIO14', 'INPUT_PULLUP, active-low, 5 ms debounce', 'switch'],
+  ['Reload / Jump / Weapon buttons', 'GPIO27 / GPIO26 / GPIO25', 'INPUT_PULLUP, 20 ms debounce', 'buttons'],
+  ['Joystick VRx / VRy / SW', 'GPIO34 / GPIO35 / GPIO33', '12-bit ADC (input-only pins), centre ≈ 2048', 'joystick'],
+  ['Vibration motor', 'GPIO13 → NPN/MOSFET', 'LEDC PWM 12 kHz, flyback diode across motor', 'motor'],
+  ['Muzzle flash LED', 'GPIO16 → 100 Ω', '60 ms pulse per shot', 'ledMuzzle'],
+  ['Piezo buzzer', 'GPIO17', 'LEDC tone (300–2000 Hz)', 'buzzer'],
+  ['Status LED', 'GPIO2 (onboard)', 'solid = connected, blink = pairing', 'ledStatus'],
+  ['Ammo LED bar ×6', 'GPIO18 / 23 / 5 / 4 / 15 / 32', '220 Ω each (or 74HC595)', 'ledAmmo'],
+  ['Power', '18650 → TP4056 → MT3608 5 V → VIN', 'USB-C/micro-USB for flashing & telemetry', 'battery'],
+];
+
+const COMPONENTS = {
+  imu: { name: 'MPU6050 IMU (GY-521)', role: '6-axis motion sensor: 3-axis gyroscope + 3-axis accelerometer. Gyro rates steer the aim; the accelerometer pins down pitch and roll so they cannot drift.', pins: 'VCC→3V3 · GND · SDA→GPIO21 · SCL→GPIO22 · INT→GPIO19', spec: '±2000 °/s (16.4 LSB per °/s) · ±2 g (16384 LSB per g) · 16-bit · on-chip DMP' },
+  esp32: { name: 'ESP32 DevKit V1', role: 'Runs the firmware: samples the IMU at 200 Hz, filters it, debounces the switches and emits HID over Bluetooth LE — or telemetry over USB serial into this simulator.', pins: 'USB 5 V in · 3V3 out to sensors · 25 usable GPIO', spec: 'Dual-core Xtensa 240 MHz · 520 KB SRAM · Wi-Fi + BT 4.2 BLE · 12-bit ADC' },
+  trigger: { name: 'Trigger', role: 'Pivoting toy trigger that presses the microswitch lever. Semi-auto fires one dart per pull; auto repeats at 6 darts/s while held.', pins: '—', spec: '≈ 8 mm travel · return spring' },
+  switch: { name: 'Trigger microswitch', role: 'Snap-action lever switch behind the trigger. A clean edge for the firmware — no bounce after the 5 ms filter.', pins: 'COM→GND · NO→GPIO14 (INPUT_PULLUP)', spec: 'KW11 lever microswitch · 10⁵ cycles' },
+  joystick: { name: 'Thumb joystick (KY-023)', role: 'Two potentiometers and a push switch, read by the ADC. Mapped to W A S D for movement — analog value kept for future gamepad mode.', pins: 'VRx→GPIO34 · VRy→GPIO35 · SW→GPIO33 · +→3V3 · GND', spec: '0–3.3 V → 0–4095 · centre ≈ 2048 · 8 % deadzone' },
+  buttons: { name: 'Action buttons ×3', role: 'Tactile switches for Reload (R), Jump (Space) and Weapon switch (Q). Thumb-reachable above the grip.', pins: 'GPIO27 / GPIO26 / GPIO25 (INPUT_PULLUP, active-low)', spec: '6×6 mm tactile · 20 ms debounce' },
+  motor: { name: 'Vibration motor', role: 'Coin ERM motor for recoil haptics: a PWM burst on every shot and a double pulse when the game reports a hit.', pins: 'GPIO13 → 2N2222 / IRLZ44N · 1N4007 flyback diode', spec: '3 V coin ERM · Ø 10 mm · ~70 mA · 12 kHz PWM' },
+  buzzer: { name: 'Piezo buzzer', role: 'Fire click, empty-magazine warning and hit chirps, generated with LEDC tones.', pins: 'GPIO17 (LEDC PWM)', spec: 'Passive piezo Ø 12 mm · 2–4 kHz resonance' },
+  ledMuzzle: { name: 'Muzzle flash LED', role: 'LED ring behind the orange tip. 60 ms flash per shot, synchronised with the buzzer and motor.', pins: 'GPIO16 → 100 Ω → LED', spec: '5 mm white (or 1 W via transistor)' },
+  ledStatus: { name: 'Status LED', role: 'Blue steady = Bluetooth connected · blinking = pairing · purple = USB serial link.', pins: 'GPIO2 (onboard) or RGB LED', spec: '5 mm RGB common-cathode' },
+  ledAmmo: { name: 'Ammo LED bar', role: 'Six LEDs mirror the magazine: they walk off as you shoot and refill on reload.', pins: 'GPIO18 / 23 / 5 / 4 / 15 / 32 via 220 Ω', spec: '3 mm green ×6' },
+  mag: { name: 'Dart magazine', role: 'Six-dart toy magazine. Pulling it out is the natural reload gesture (optional reed switch).', pins: 'optional reed switch → GPIO39 + 10 kΩ pull-up', spec: 'Foam darts 7.2 cm · ~20 m/s muzzle velocity' },
+  battery: { name: '18650 Li-ion cell', role: 'Runs the gun untethered from inside the stock tube — roughly 8 h at 200 mA average draw.', pins: 'Cell → TP4056 B+/B− → OUT → MT3608 boost → VIN', spec: '3.7 V nominal · 2600 mAh · protected cell' },
+  charger: { name: 'TP4056 charger', role: 'Charges the cell over micro-USB and adds over-discharge protection (DW01 + FS8205).', pins: 'IN 5 V · B+/B− · OUT+/OUT−', spec: '1 A charge · LED charging / full' },
+  switchPwr: { name: 'Power switch', role: 'Slide switch between the battery pack and the boost converter.', pins: 'series with battery OUT+', spec: 'SS12D00 slide switch' },
+  barrel: { name: 'Barrel & muzzle', role: 'Toy blaster barrel with the orange safety tip; darts leave here and the flash LED sits just behind the tip.', pins: '—', spec: 'Ø 42 mm · 170 mm' },
+  usb: { name: 'USB port', role: 'Flash the firmware, stream telemetry into this simulator, or bridge to any game through the serial-to-input script.', pins: 'ESP32 micro-USB (CP2102 @ 115200 baud)', spec: 'USB 2.0 full speed' },
+};
+
+const MAT = {
+  shell: { color: [0.86, 0.84, 0.80], shininess: 30, spec: 0.25 },
+  panel: { color: [0.22, 0.30, 0.52], shininess: 40, spec: 0.3 },
+  grip: { color: [0.21, 0.22, 0.26], shininess: 12, spec: 0.12 },
+  orange: { color: [1.0, 0.42, 0.17], shininess: 30, spec: 0.3 },
+  gold: { color: [0.96, 0.71, 0.22], shininess: 60, spec: 0.5 },
+  black: { color: [0.05, 0.06, 0.07], shininess: 20, spec: 0.2 },
+  pcb: { color: [0.05, 0.07, 0.10], shininess: 60, spec: 0.35 },
+  pcbBlue: { color: [0.14, 0.24, 0.66], shininess: 60, spec: 0.35 },
+  metal: { color: [0.74, 0.76, 0.80], shininess: 90, spec: 0.8, fresnel: 0.3 },
+  brass: { color: [0.78, 0.62, 0.28], shininess: 90, spec: 0.7 },
+  cell: { color: [0.18, 0.45, 0.85], shininess: 50, spec: 0.4 },
+  red: { color: [0.85, 0.12, 0.10] },
+  wire: { red: [0.85, 0.12, 0.10], black: [0.10, 0.10, 0.11], yellow: [0.95, 0.80, 0.12], green: [0.10, 0.65, 0.30], blue: [0.20, 0.42, 0.90], white: [0.92, 0.92, 0.92] },
+};
+
+function buildGun(R) {
+  const geo = g => R.geometry(g);
+  const ROT_PROFILE = Q.axisAngle([0, 1, 0], Math.PI / 2);   // profile X (forward) → -Z ; extrude Z → +X
+  const ROT_ALONG_Z = Q.axisAngle([1, 0, 0], Math.PI / 2);   // cylinder Y → Z
+  const ROT_ALONG_NX = Q.axisAngle([0, 0, 1], Math.PI / 2);  // cylinder +Y → -X
+  const at = (u, v, x = 0) => [x, v, -u];
+  const root = new Node('gun');
+  const parts = [];           // { node, base, offset, shell }
+  const compNodes = {};       // id → [nodes]
+  const wires = [];
+  const cache = {};
+  const gbox = (w, h, d) => { const k = `b${w},${h},${d}`; return cache[k] || (cache[k] = geo(Geo.box(w, h, d))); };
+  const gcyl = (rt, rb, h, seg = 24) => { const k = `c${rt},${rb},${h},${seg}`; return cache[k] || (cache[k] = geo(Geo.cylinder(rt, rb, h, seg))); };
+  const gsph = r => { const k = `s${r}`; return cache[k] || (cache[k] = geo(Geo.sphere(r, 14, 10))); };
+
+  function part(node, base, offset, opts = {}) {
+    node.pos = base.slice(); root.add(node);
+    parts.push({ node, base: base.slice(), offset: offset || [0, 0, 0], shell: !!opts.shell });
+    if (opts.comp) { (compNodes[opts.comp] = compNodes[opts.comp] || []).push(node); node.traverse(n => { if (n.geo) { n.mat.pickable = true; n.userData.comp = opts.comp; } }); }
+    return node;
+  }
+  const mesh = (g, m, name) => new Mesh(g, Object.assign({}, m), name);
+  const boxAt = (parent, w, h, d, x, y, z, m) => { const b = parent.add(mesh(gbox(w, h, d), m)); b.pos = [x, y, z]; return b; };
+
+  /* ---- shell: receiver ---- */
+  const receiverProfile = Geo.round([[-0.175, 0.020], [-0.175, 0.100], [-0.150, 0.118], [0.010, 0.118], [0.045, 0.104], [0.190, 0.094], [0.205, 0.072], [0.205, 0.030], [0.185, 0.012], [0.090, 0.006], [0.030, 0.000], [-0.095, 0.000], [-0.125, 0.010]], 0.012, 3);
+  const receiver = mesh(geo(Geo.prism(receiverProfile, 0.064)), MAT.shell, 'receiver'); receiver.rot = ROT_PROFILE;
+  part(receiver, [0, 0, 0], [0, 0, 0], { shell: true });
+  /* side panels */
+  const panelProfile = Geo.round([[-0.150, 0.030], [-0.150, 0.092], [-0.130, 0.104], [0.020, 0.104], [0.060, 0.086], [0.175, 0.080], [0.180, 0.050], [0.120, 0.024], [0.000, 0.020], [-0.090, 0.020]], 0.010, 3);
+  const panelGeo = geo(Geo.prism(panelProfile, 0.006));
+  for (const s of [-1, 1]) {
+    const g = new Node('panel' + s); const p = g.add(mesh(panelGeo, MAT.panel)); p.rot = ROT_PROFILE;
+    boxAt(g, 0.002, 0.008, 0.110, s * 0.004, 0.058, -0.030, MAT.gold);
+    part(g, [s * 0.0345, 0, 0], [s * 0.11, 0.0, 0], { shell: true });
+  }
+  /* grip */
+  const gripProfile = Geo.round([[-0.050, 0.035], [-0.130, 0.035], [-0.182, -0.118], [-0.128, -0.132]], 0.012, 3);
+  const grip = mesh(geo(Geo.prism(gripProfile, 0.040)), MAT.grip, 'grip'); grip.rot = ROT_PROFILE;
+  part(grip, [0, 0, 0], [0, -0.06, 0.03], { shell: true });
+  /* trigger guard */
+  const guard = new Node('guard');
+  boxAt(guard, 0.010, 0.062, 0.008, 0, -0.024, 0.004, MAT.grip);
+  boxAt(guard, 0.010, 0.008, 0.092, 0, -0.052, 0.048, MAT.grip);
+  part(guard, [0, 0, 0], [0, -0.10, 0], { shell: true });
+  /* foregrip + barrel shroud */
+  const fore = new Node('foregrip'); boxAt(fore, 0.036, 0.070, 0.046, 0, -0.010, 0, MAT.grip); boxAt(fore, 0.050, 0.028, 0.090, 0, 0.040, 0, MAT.panel);
+  part(fore, at(0.235, 0), [0, -0.10, -0.02], { shell: true });
+  /* top rail + sights */
+  const rail = new Node('rail');
+  boxAt(rail, 0.020, 0.008, 0.150, 0, 0.122, 0.075, MAT.grip);
+  for (const u of [-0.14, -0.12, -0.10, -0.08]) boxAt(rail, 0.022, 0.006, 0.008, 0, 0.129, -u, MAT.grip);
+  boxAt(rail, 0.024, 0.014, 0.008, 0, 0.133, 0.152, MAT.grip); boxAt(rail, 0.006, 0.006, 0.010, 0, 0.143, 0.152, MAT.orange);
+  boxAt(rail, 0.006, 0.014, 0.006, 0, 0.117, -0.030, MAT.orange);
+  part(rail, [0, 0, 0], [0, 0.05, 0], { shell: true });
+  /* stock tube (battery housing) */
+  const tube = mesh(gcyl(0.017, 0.017, 0.100, 28), MAT.panel, 'stock'); tube.rot = ROT_ALONG_Z;
+  part(tube, at(-0.225, 0.062), [0, 0, 0.10], { shell: true });
+  const tubeCap = mesh(gcyl(0.019, 0.019, 0.012, 28), MAT.grip, 'stockCap'); tubeCap.rot = ROT_ALONG_Z;
+  part(tubeCap, at(-0.281, 0.062), [0, 0, 0.17], { shell: true });
+  /* USB port cutout (right face) */
+  const usb = new Node('usb'); boxAt(usb, 0.003, 0.006, 0.010, 0, 0, 0, MAT.black); boxAt(usb, 0.001, 0.003, 0.007, -0.0015, 0, 0, MAT.metal);
+  part(usb, at(-0.060, 0.062, 0.0378), [0.11, 0, 0], { comp: 'usb' });
+
+  /* ---- barrel & muzzle ---- */
+  const barrel = new Node('barrel');
+  const bcyl = barrel.add(mesh(gcyl(0.021, 0.021, 0.170, 28), MAT.panel)); bcyl.rot = ROT_ALONG_Z;
+  const bring = barrel.add(mesh(gcyl(0.023, 0.023, 0.010, 28), MAT.grip)); bring.rot = ROT_ALONG_Z; bring.pos = [0, 0, 0.078];
+  part(barrel, at(0.270, 0.062), [0, 0, -0.12], { comp: 'barrel' });
+  const tip = new Node('tip');
+  const tcyl = tip.add(mesh(gcyl(0.025, 0.025, 0.026, 28), MAT.orange)); tcyl.rot = ROT_ALONG_Z;
+  const bore = tip.add(mesh(gcyl(0.011, 0.011, 0.040, 20), MAT.black)); bore.rot = ROT_ALONG_Z; bore.pos = [0, 0, -0.006];
+  part(tip, at(0.355, 0.062), [0, 0, -0.19], { comp: 'barrel' });
+  const ledRing = mesh(gcyl(0.0165, 0.0165, 0.006, 28), { color: [0.95, 0.93, 0.9], emissive: [0.10, 0.06, 0.02], unlit: true, castShadow: false }, 'ledRing'); ledRing.rot = ROT_ALONG_Z;
+  part(ledRing, at(0.371, 0.062), [0, 0.06, -0.22], { comp: 'ledMuzzle' });
+  const flash = new Mesh(gsph(0.016), { color: [1, 0.55, 0.2], emissive: [0.25, 0.12, 0.02], unlit: true, opacity: 0.85, castShadow: false, receiveShadow: false }, 'flash');
+  flash.pos = at(0.395, 0.062); flash.visible = false; root.add(flash);
+  /* nameplate on the right panel */
+  const nc = document.createElement('canvas'); nc.width = 256; nc.height = 64; const nx = nc.getContext('2d');
+  nx.fillStyle = '#1b2440'; nx.fillRect(0, 0, 256, 64); nx.fillStyle = '#f5b638'; nx.fillRect(0, 0, 6, 64);
+  nx.fillStyle = '#f2efe8'; nx.font = 'bold 26px sans-serif'; nx.textBaseline = 'middle'; nx.fillText('TEAM FALCON', 18, 22);
+  nx.fillStyle = '#9fb0d8'; nx.font = '16px sans-serif'; nx.fillText('FPS-01 · ESP32 · MPU6050', 18, 48);
+  const plate = mesh(geo(Geo.quad(0.064, 0.016)), { color: [1, 1, 1], tex: R.texture(nc, { mips: true }), shininess: 20, spec: 0.1, castShadow: false });
+  plate.rot = Q.axisAngle([0, 1, 0], Math.PI / 2); plate.pos = at(0.020, 0.075, 0.0382); root.add(plate); plate.userData.shellDecal = true;
+  /* grip ribs */
+  for (let i = 0; i < 4; i++) { const rb = mesh(gbox(0.042, 0.005, 0.006), MAT.black); rb.pos = at(-0.0605 - i * 0.0121, 0.008 - i * 0.026); rb.rot = Q.axisAngle([1, 0, 0], 0.44); root.add(rb); rb.userData.shellDecal = true; }
+  const muzzle = new Node('muzzle'); muzzle.pos = at(0.385, 0.062); root.add(muzzle);
+
+  /* ---- trigger + microswitch ---- */
+  const trigger = new Node('trigger'); boxAt(trigger, 0.009, 0.034, 0.007, 0, -0.017, 0, MAT.orange);
+  part(trigger, at(-0.024, 0.018), [0, -0.06, 0.05], { comp: 'trigger' });
+  const sw = new Node('switch'); boxAt(sw, 0.006, 0.010, 0.020, 0, 0, 0, MAT.black);
+  const lever = boxAt(sw, 0.005, 0.0008, 0.018, 0, -0.0065, 0.002, MAT.metal); lever.rot = Q.axisAngle([1, 0, 0], 0.18);
+  boxAt(sw, 0.002, 0.002, 0.002, 0, -0.0058, 0.004, MAT.red);
+  part(sw, at(-0.026, 0.040), [-0.10, 0.02, 0.0], { comp: 'switch' });
+
+  /* ---- joystick on the foregrip's left face ---- */
+  const joy = new Node('joystick');
+  boxAt(joy, 0.0014, 0.032, 0.026, 0, 0, 0, MAT.pcb);
+  const dome = joy.add(mesh(gcyl(0.011, 0.012, 0.007, 24), MAT.grip)); dome.rot = ROT_ALONG_NX; dome.pos = [-0.0042, 0, 0];
+  const stick = new Node('stick'); stick.pos = [-0.0077, 0, 0]; joy.add(stick);
+  const shaft = stick.add(mesh(gcyl(0.0028, 0.0028, 0.014, 12), MAT.black)); shaft.rot = ROT_ALONG_NX; shaft.pos = [-0.007, 0, 0];
+  const cap = stick.add(mesh(gcyl(0.0065, 0.0055, 0.005, 20), MAT.grip)); cap.rot = ROT_ALONG_NX; cap.pos = [-0.0165, 0, 0];
+  part(joy, at(0.235, -0.008, -0.0187), [-0.11, -0.03, -0.02], { comp: 'joystick' });
+
+  /* ---- action buttons (left face) ---- */
+  const btnCaps = [];
+  const btnGroup = new Node('buttons');
+  const capColors = [[0.22, 0.53, 0.90], [0.05, 0.64, 0.05], [0.96, 0.71, 0.22]];
+  [-0.118, -0.098, -0.078].forEach((u, i) => {
+    const b = new Node('btn' + i); b.pos = at(u, 0.070, -0.041); btnGroup.add(b);
+    boxAt(b, 0.007, 0.007, 0.007, 0, 0, 0, MAT.black);
+    const c = b.add(mesh(gcyl(0.0025, 0.0025, 0.0035, 16), { color: capColors[i], shininess: 50, spec: 0.4 })); c.rot = ROT_ALONG_NX; c.pos = [-0.00525, 0, 0];
+    btnCaps.push(c);
+  });
+  part(btnGroup, [0, 0, 0], [-0.11, 0.04, 0.0], { comp: 'buttons' });
+
+  /* ---- electronics inside ---- */
+  const esp = new Node('esp32');
+  boxAt(esp, 0.028, 0.0016, 0.052, 0, 0, 0, MAT.pcb);
+  boxAt(esp, 0.016, 0.0032, 0.018, 0, 0.0024, 0.015, MAT.metal);
+  boxAt(esp, 0.008, 0.0028, 0.006, 0, 0.0022, -0.025, MAT.metal);
+  boxAt(esp, 0.0025, 0.0055, 0.048, 0.0125, -0.0035, 0, MAT.black); boxAt(esp, 0.0025, 0.0055, 0.048, -0.0125, -0.0035, 0, MAT.black);
+  boxAt(esp, 0.003, 0.002, 0.003, 0.009, 0.0018, -0.02, MAT.black); boxAt(esp, 0.003, 0.002, 0.003, -0.009, 0.0018, -0.02, MAT.black);
+  const pwrLed = esp.add(mesh(gsph(0.0012), { color: [1, 0.3, 0.2], emissive: [0.8, 0.1, 0.05], unlit: true })); pwrLed.pos = [0.006, 0.0016, -0.014];
+  part(esp, at(-0.085, 0.062), [0.07, 0.10, 0.02], { comp: 'esp32' });
+
+  const imu = new Node('imu');
+  boxAt(imu, 0.016, 0.0012, 0.021, 0, 0, 0, MAT.pcbBlue);
+  boxAt(imu, 0.004, 0.0009, 0.004, 0, 0.001, 0, MAT.black);
+  boxAt(imu, 0.0025, 0.006, 0.020, -0.0075, 0.0035, 0, MAT.black);
+  boxAt(imu, 0.0015, 0.0008, 0.001, 0.004, 0.001, 0.005, MAT.metal); boxAt(imu, 0.0015, 0.0008, 0.001, 0.004, 0.001, -0.005, MAT.metal);
+  part(imu, at(-0.035, 0.1268), [0, 0.12, 0], { comp: 'imu' });
+
+  const motor = new Node('motor');
+  const mdisc = motor.add(mesh(gcyl(0.005, 0.005, 0.0027, 20), MAT.metal)); mdisc.rot = ROT_ALONG_NX;
+  boxAt(motor, 0.001, 0.001, 0.008, 0, -0.004, 0.006, MAT.red);
+  part(motor, at(-0.125, -0.055), [-0.07, -0.10, 0.03], { comp: 'motor' });
+
+  const buzzer = new Node('buzzer');
+  const bz = buzzer.add(mesh(gcyl(0.0065, 0.0065, 0.0022, 24), MAT.black)); bz.rot = ROT_ALONG_NX;
+  const bz2 = buzzer.add(mesh(gcyl(0.0035, 0.0035, 0.0026, 20), MAT.brass)); bz2.rot = ROT_ALONG_NX;
+  part(buzzer, at(-0.145, 0.075), [-0.08, 0.05, 0.07], { comp: 'buzzer' });
+
+  const sled = new Node('statusLed');
+  const sbody = sled.add(mesh(gcyl(0.0025, 0.0025, 0.005, 14), { color: [0.75, 0.82, 0.92], emissive: [0, 0, 0] })); sbody.pos = [0, 0.0025, 0];
+  const sdome = sled.add(mesh(gsph(0.0026), { color: [0.75, 0.82, 0.92], emissive: [0, 0, 0] })); sdome.pos = [0, 0.005, 0];
+  part(sled, at(-0.163, 0.110), [0, 0.09, 0.06], { comp: 'ledStatus' });
+
+  const ammoLeds = [];
+  const aled = new Node('ammoLeds');
+  for (let i = 0; i < 6; i++) { const l = aled.add(mesh(gsph(0.0017), { color: [0.4, 0.9, 0.5], emissive: [0.1, 0.9, 0.3], unlit: true })); l.pos = at(-0.02 + i * 0.013, 0.090, -0.0385); ammoLeds.push(l); }
+  part(aled, [0, 0, 0], [-0.09, 0.11, 0.0], { comp: 'ledAmmo' });
+
+  const mag = new Node('mag');
+  boxAt(mag, 0.026, 0.086, 0.032, 0, 0, 0, MAT.grip);
+  boxAt(mag, 0.0015, 0.050, 0.006, 0.0135, 0.004, 0, MAT.orange); boxAt(mag, 0.0015, 0.050, 0.006, -0.0135, 0.004, 0, MAT.orange);
+  boxAt(mag, 0.030, 0.006, 0.036, 0, -0.044, 0, MAT.grip);
+  part(mag, at(0.045, -0.042), [0, -0.17, -0.02], { comp: 'mag' });
+
+  const batt = new Node('battery');
+  const cell = batt.add(mesh(gcyl(0.009, 0.009, 0.065, 24), MAT.cell)); cell.rot = ROT_ALONG_Z;
+  for (const z of [-0.0335, 0.0335]) { const c = batt.add(mesh(gcyl(0.0075, 0.0075, 0.003, 20), MAT.metal)); c.rot = ROT_ALONG_Z; c.pos = [0, 0, z]; }
+  const nub = batt.add(mesh(gcyl(0.003, 0.003, 0.002, 12), MAT.metal)); nub.rot = ROT_ALONG_Z; nub.pos = [0, 0, -0.036];
+  part(batt, at(-0.225, 0.062), [0, 0.10, 0.15], { comp: 'battery' });
+
+  const chg = new Node('charger');
+  boxAt(chg, 0.017, 0.0012, 0.026, 0, 0, 0, MAT.pcbBlue); boxAt(chg, 0.007, 0.0025, 0.005, 0, 0.0018, 0.011, MAT.metal);
+  const cl1 = chg.add(mesh(gsph(0.0009), { color: [1, 0.3, 0.3], emissive: [0.6, 0.05, 0.05], unlit: true })); cl1.pos = [0.005, 0.0012, -0.005];
+  const cl2 = chg.add(mesh(gsph(0.0009), { color: [0.3, 0.5, 1], emissive: [0.05, 0.2, 0.7], unlit: true })); cl2.pos = [-0.005, 0.0012, -0.005];
+  part(chg, at(-0.140, 0.024), [-0.05, -0.12, 0.08], { comp: 'charger' });
+
+  const psw = new Node('powerSwitch'); boxAt(psw, 0.008, 0.005, 0.010, 0, 0, 0, MAT.black); boxAt(psw, 0.003, 0.003, 0.003, 0.001, 0, 0.0055, MAT.red);
+  part(psw, at(-0.176, 0.040), [0, -0.07, 0.10], { comp: 'switchPwr' });
+
+  /* ---- wires (visible in x-ray) ---- */
+  const wireDefs = [
+    ['red', [[0.010, 0.065, 0.075], [0.012, 0.090, 0.060], [0.006, 0.115, 0.045], [0.003, 0.125, 0.038]]],
+    ['yellow', [[0.013, 0.065, 0.078], [0.015, 0.092, 0.063], [0.009, 0.117, 0.047], [0.006, 0.125, 0.040]]],
+    ['green', [[-0.008, 0.062, 0.075], [-0.010, 0.050, 0.050], [-0.004, 0.044, 0.030]]],
+    ['blue', [[0.000, 0.060, 0.060], [0.000, 0.050, -0.050], [-0.010, 0.030, -0.150], [-0.016, 0.010, -0.220], [-0.018, -0.005, -0.232]]],
+    ['red', [[-0.006, 0.060, 0.095], [-0.008, 0.020, 0.115], [-0.004, -0.030, 0.122], [0.000, -0.050, 0.125]]],
+    ['black', [[0.008, 0.064, 0.100], [0.010, 0.072, 0.130], [0.004, 0.075, 0.142]]],
+    ['red', [[0.004, 0.058, 0.100], [0.006, 0.035, 0.130], [0.002, 0.026, 0.138]]],
+    ['white', [[0.006, 0.070, 0.060], [0.012, 0.085, -0.050], [0.014, 0.078, -0.200], [0.010, 0.075, -0.340], [0.004, 0.070, -0.365]]],
+    ['yellow', [[-0.010, 0.062, 0.085], [-0.030, 0.066, 0.092], [-0.038, 0.070, 0.096]]],
+  ];
+  for (const [c, path] of wireDefs) { const w = mesh(geo(Geo.tube(path, 0.0007, 6)), { color: MAT.wire[c], shininess: 20, spec: 0.2, castShadow: false }); w.userData.wire = true; root.add(w); wires.push(w); }
+
+  /* ---- state & animation ---- */
+  const st = { explode: 0, xray: false, trigger: 0, mag: 0, stick: [0, 0], buttons: [0, 0, 0], ammo: 6, statusMode: 'sim', flash: 0 };
+  const ease = t => t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  function apply() {
+    const e = ease(Math.min(1, Math.max(0, st.explode)));
+    const ghost = st.xray || e > 0.02;
+    for (const p of parts) {
+      const k = e * 0.8;
+      p.node.pos = [p.base[0] + p.offset[0] * k, p.base[1] + p.offset[1] * k, p.base[2] + p.offset[2] * k];
+      if (p.shell) p.node.traverse(n => { if (n.geo) { n.mat.opacity = ghost ? 0.2 : 1; n.mat.emissive = ghost ? [0.10, 0.11, 0.14] : [0, 0, 0]; n.mat.castShadow = !ghost; } });
+    }
+    for (const w of wires) { w.visible = ghost && e < 0.6; w.mat.opacity = Math.max(0, 1 - e * 1.8); }
+    for (const d of root.children) if (d.userData.shellDecal) { d.visible = !ghost; }
+    trigger.rot = Q.axisAngle([1, 0, 0], -0.42 * st.trigger);
+    mag.pos = [mag.pos[0], mag.pos[1] - 0.16 * st.mag, mag.pos[2]];
+    stick.rot = Q.mul(Q.axisAngle([0, 1, 0], -st.stick[1] * 0.45), Q.axisAngle([0, 0, 1], st.stick[0] * 0.45));
+    btnCaps.forEach((c, i) => { c.pos = [-0.00525 + (st.buttons[i] ? 0.0016 : 0), 0, 0]; });
+    ammoLeds.forEach((l, i) => { const on = i < st.ammo; l.mat.emissive = on ? [0.1, 0.9, 0.3] : [0.02, 0.06, 0.03]; l.mat.color = on ? [0.4, 0.9, 0.5] : [0.15, 0.2, 0.16]; });
+    const sc = st.statusMode === 'ble' ? [0.1, 0.35, 1.0] : st.statusMode === 'serial' ? [0.7, 0.2, 1.0] : st.statusMode === 'pairing' ? ((performance.now() % 600) < 300 ? [0.1, 0.35, 1.0] : [0, 0, 0]) : [0.02, 0.06, 0.16];
+    sdome.mat.emissive = sc; sbody.mat.emissive = V3.scale(sc, 0.5);
+    const f = st.flash; ledRing.mat.emissive = [0.10 + 1.5 * f, 0.06 + 0.8 * f, 0.02 + 0.2 * f]; flash.visible = f > 0.05; flash.scl = [0.5 + f, 0.5 + f, 0.8 + f * 1.6]; flash.mat.opacity = 0.9 * f;
+  }
+  apply();
+  return { root, parts, comps: compNodes, st, apply, muzzle, trigger, mag, stick, btnCaps, receiver, ammoLeds, flash };
+}
+/* ============================================================
+   Shooting range — floor, walls, lanes, targets, darts, hit FX
+   World frame: player stands near z = +2 looking toward -Z.
+   ============================================================ */
+const ROT_X90 = Q.axisAngle([1, 0, 0], Math.PI / 2);
+function orientAlong(node, dir) {
+  const z = V3.norm(V3.scale(dir, -1)); let x = V3.cross([0, 1, 0], z); if (V3.len(x) < 1e-6) x = [1, 0, 0]; x = V3.norm(x); const y = V3.cross(z, x);
+  node.rot = Q.fromCols(x, y, z);
+}
+function textQuad(R, text, w, h, opts = {}) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 128; const x = c.getContext('2d');
+  x.clearRect(0, 0, 256, 128);
+  if (opts.bg) { x.fillStyle = opts.bg; x.fillRect(0, 0, 256, 128); }
+  x.fillStyle = opts.color || '#f5b638'; x.font = `bold ${opts.size || 78}px sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, 128, 66);
+  const m = new Mesh(R.geometry(Geo.quad(w, h)), { color: [1, 1, 1], tex: R.texture(c), alphaTex: true, unlit: true, castShadow: false, receiveShadow: false, doubleSide: true });
+  return m;
+}
+function targetTexture(R) {
+  const c = document.createElement('canvas'); c.width = c.height = 256; const x = c.getContext('2d');
+  x.fillStyle = '#d9dbe0'; x.fillRect(0, 0, 256, 256);
+  const ring = (r, fill, stroke) => { x.beginPath(); x.arc(128, 128, r, 0, Math.PI * 2); if (fill) { x.fillStyle = fill; x.fill(); } if (stroke) { x.strokeStyle = stroke; x.lineWidth = 3; x.stroke(); } };
+  ring(126, '#e3e5ea', '#1a1d26'); ring(84, '#f6f6f4', '#1a1d26'); ring(42, '#d03b3b', '#1a1d26'); ring(10, '#f6f6f4', null);
+  x.fillStyle = '#1a1d26'; x.font = 'bold 22px sans-serif'; x.textAlign = 'center'; x.fillText('2', 128, 118 - 96); x.fillText('5', 128, 118 - 56); x.fillStyle = '#ffffff'; x.fillText('10', 128, 136 + 18);
+  return R.texture(c);
+}
+function floorTexture(R) {
+  const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d');
+  x.fillStyle = '#4c515c'; x.fillRect(0, 0, 512, 512);
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 2600; i++) { const v = 60 + rnd() * 50 | 0; x.fillStyle = `rgba(${v},${v + 4},${v + 10},0.35)`; x.fillRect(rnd() * 512, rnd() * 512, 2 + rnd() * 3, 2 + rnd() * 3); }
+  x.strokeStyle = 'rgba(200,205,215,0.28)'; x.lineWidth = 2; x.strokeRect(1, 1, 510, 510); x.beginPath(); x.moveTo(256, 0); x.lineTo(256, 512); x.moveTo(0, 256); x.lineTo(512, 256); x.stroke();
+  return R.texture(c, { repeat: true });
+}
+
+function buildRange(R) {
+  const root = new Node('range');
+  const M = (g, m) => new Mesh(R.geometry(g), m);
+  const floor = root.add(M(Geo.ground(28, 46, 14), { color: [1, 1, 1], tex: floorTexture(R), spec: 0.08, shininess: 12, castShadow: false })); floor.pos = [0, 0, -13];
+  const wallMat = { color: [0.27, 0.30, 0.38], spec: 0.05, shininess: 10 };
+  const back = root.add(M(Geo.box(28, 4.2, 0.4), wallMat)); back.pos = [0, 2.1, -22.2];
+  for (const s of [-1, 1]) { const w = root.add(M(Geo.box(0.4, 4.2, 46), wallMat)); w.pos = [s * 14.2, 2.1, -13]; }
+  const band = root.add(M(Geo.box(28, 0.5, 0.06), { color: [0.96, 0.71, 0.22], unlit: true, castShadow: false })); band.pos = [0, 3.2, -21.98];
+  for (const z of [-3, -8, -13, -18]) { const beam = root.add(M(Geo.box(28, 0.16, 0.16), { color: [0.18, 0.2, 0.26] })); beam.pos = [0, 3.9, z]; }
+  for (const z of [-3, -8, -13, -18]) for (const x of [-7, 0, 7]) { const lamp = root.add(M(Geo.box(1.4, 0.05, 0.22), { color: [1, 0.98, 0.92], emissive: [0.9, 0.85, 0.7], unlit: true, castShadow: false })); lamp.pos = [x, 3.8, z]; }
+  for (const x of [-8, -4, 0, 4, 8]) { const s = root.add(M(Geo.box(0.06, 0.006, 21.5), { color: [0.9, 0.75, 0.25], emissive: [0.35, 0.28, 0.08], castShadow: false })); s.pos = [x, 0.003, -10.7]; }
+  const line = root.add(M(Geo.box(28, 0.006, 0.12), { color: [0.9, 0.9, 0.92], emissive: [0.3, 0.3, 0.3], castShadow: false })); line.pos = [0, 0.003, 0.4];
+  for (const d of [5, 10, 15, 20]) { const t = textQuad(R, `${d} m`, 1.4, 0.7, { size: 84 }); t.pos = [-11.5, 0.75, -d]; root.add(t); const post = root.add(M(Geo.box(0.05, 0.75, 0.05), { color: [0.2, 0.2, 0.24] })); post.pos = [-11.5, 0.375, -d]; }
+
+  /* ---- targets ---- */
+  const faceTex = targetTexture(R);
+  const faceGeo = R.geometry(Geo.cylinder(0.30, 0.30, 0.03, 40)), poleGeo = R.geometry(Geo.cylinder(0.02, 0.02, 0.8, 12)), baseGeo = R.geometry(Geo.box(0.5, 0.06, 0.5));
+  const targets = [];
+  const defs = [
+    { x: -6, z: -4, kind: 'static' }, { x: -2, z: -6.5, kind: 'move', amp: 1.4, w: 0.9 }, { x: 2, z: -9, kind: 'pop', up: 3.2, down: 1.4 },
+    { x: 6, z: -12, kind: 'static' }, { x: -4, z: -15, kind: 'move', amp: 2.2, w: 1.5 }, { x: 4, z: -18.5, kind: 'static' }];
+  defs.forEach((d, i) => {
+    const g = new Node('target' + i); g.pos = [d.x, 0, d.z]; root.add(g);
+    g.add(new Mesh(baseGeo, { color: [0.22, 0.24, 0.28] })).pos = [0, 0.03, 0];
+    g.add(new Mesh(poleGeo, { color: [0.35, 0.37, 0.42], shininess: 60, spec: 0.5 })).pos = [0, 0.46, 0];
+    const head = new Node('head'); head.pos = [0, 0.86, 0]; g.add(head);
+    const face = head.add(new Mesh(faceGeo, { color: [1, 1, 1], tex: faceTex, shininess: 20, spec: 0.15 })); face.rot = ROT_X90; face.pos = [0, 0.30, 0];
+    targets.push({ node: g, head, def: d, x0: d.x, state: 'up', t: Math.random() * 3, k: 0, phase: i * 1.3, timer: 0 });
+  });
+  function faceCenter(t) { return [t.node.pos[0], t.node.pos[1] + 0.86 + 0.30, t.node.pos[2]]; }
+
+  /* ---- darts ---- */
+  const dartBody = R.geometry(Geo.cylinder(0.0065, 0.0065, 0.058, 10)), dartTip = R.geometry(Geo.cylinder(0.0078, 0.0062, 0.014, 10));
+  const darts = [];
+  for (let i = 0; i < 24; i++) {
+    const g = new Node('dart' + i); g.visible = false;
+    const b = g.add(new Mesh(dartBody, { color: [0.20, 0.45, 0.92], shininess: 30, spec: 0.3 })); b.rot = ROT_X90;
+    const tp = g.add(new Mesh(dartTip, { color: [1.0, 0.42, 0.17], shininess: 30, spec: 0.3 })); tp.rot = ROT_X90; tp.pos = [0, 0, -0.036];
+    root.add(g); darts.push({ node: g, live: false, v: [0, 0, 0], age: 0, stuck: false });
+  }
+  const fx = [];
+  const ringGeo = R.geometry(Geo.torus(0.06, 0.012, 24, 8));
+  for (let i = 0; i < 8; i++) { const m = new Mesh(ringGeo, { color: [1, 1, 1], emissive: [0.5, 0.5, 0.5], unlit: true, opacity: 0.9, castShadow: false, receiveShadow: false }); m.visible = false; root.add(m); fx.push({ node: m, age: 1, life: 0.35 }); }
+  const puffs = [];
+  const puffGeo = R.geometry(Geo.sphere(0.05, 8, 6));
+  for (let i = 0; i < 10; i++) { const m = new Mesh(puffGeo, { color: [0.8, 0.8, 0.85], emissive: [0.15, 0.15, 0.18], unlit: true, opacity: 0.6, castShadow: false, receiveShadow: false }); m.visible = false; root.add(m); puffs.push({ node: m, age: 1, life: 0.4 }); }
+
+  const cfg = { speed: 32, gravity: 3.0, drag: 0.10 };
+  const api = {
+    root, targets, darts, cfg, stats: { shots: 0, hits: 0, score: 0, best: 0, streak: 0 },
+    onHit: null, onMiss: null,
+    fire(origin, dir, spread = 0) {
+      let d = darts.find(x => !x.live) || darts.reduce((a, b) => a.age > b.age ? a : b);
+      const j = () => (Math.random() - 0.5) * spread;
+      const v = V3.norm([dir[0] + j(), dir[1] + j(), dir[2] + j()]);
+      d.live = true; d.stuck = false; d.age = 0; d.v = V3.scale(v, cfg.speed); d.node.pos = origin.slice(); d.node.visible = true; d.node.scl = [1, 1, 1]; orientAlong(d.node, v);
+      api.stats.shots++;
+    },
+    spawnFx(pos, color) { const f = fx.find(x => x.age >= x.life) || fx[0]; f.age = 0; f.node.visible = true; f.node.pos = pos.slice(); f.node.mat.color = color; f.node.mat.emissive = V3.scale(color, 0.6); f.node.rot = ROT_X90; },
+    spawnPuff(pos) { const p = puffs.find(x => x.age >= x.life) || puffs[0]; p.age = 0; p.node.visible = true; p.node.pos = pos.slice(); },
+    update(dt, time) {
+      // targets
+      for (const t of targets) {
+        const d = t.def;
+        if (d.kind === 'move') t.node.pos[0] = t.x0 + d.amp * Math.sin(time * d.w + t.phase);
+        if (t.state === 'up') { if (d.kind === 'pop') { t.timer += dt; if (t.timer > d.up) { t.state = 'falling'; t.timer = 0; } } }
+        else if (t.state === 'hit' || t.state === 'falling') { t.k = Math.min(1, t.k + dt * 4.5); if (t.k >= 1) { t.state = 'down'; t.timer = 0; } }
+        else if (t.state === 'down') { t.timer += dt; const wait = d.kind === 'pop' ? d.down : 1.8; if (t.timer > wait) t.state = 'rising'; }
+        else if (t.state === 'rising') { t.k = Math.max(0, t.k - dt * 3.5); if (t.k <= 0) { t.state = 'up'; t.timer = 0; } }
+        const e = t.k < 0.5 ? 2 * t.k * t.k : 1 - Math.pow(-2 * t.k + 2, 2) / 2;
+        t.head.rot = Q.axisAngle([1, 0, 0], -Math.PI / 2 * e);
+      }
+      // darts
+      for (const d of darts) {
+        if (!d.live) continue;
+        d.age += dt;
+        if (d.stuck) { if (d.age > 6) { d.live = false; d.node.visible = false; } continue; }
+        const prev = d.node.pos.slice();
+        d.v[1] -= cfg.gravity * dt; d.v = V3.scale(d.v, Math.max(0, 1 - cfg.drag * dt));
+        const next = V3.add(prev, V3.scale(d.v, dt));
+        // target hit test (segment vs sphere)
+        let hit = null;
+        for (const t of targets) {
+          if (t.state !== 'up') continue;
+          const c = faceCenter(t), seg = V3.sub(next, prev), L = V3.len(seg); if (L < 1e-6) continue;
+          const dir = V3.scale(seg, 1 / L), toC = V3.sub(c, prev), proj = Math.max(0, Math.min(L, V3.dot(toC, dir)));
+          const closest = V3.add(prev, V3.scale(dir, proj)), r = V3.dist(closest, c);
+          if (r < 0.32) { hit = { t, point: closest, r }; break; }
+        }
+        if (hit) {
+          const zone = hit.r < 0.10 ? 10 : hit.r < 0.20 ? 5 : 2;
+          hit.t.state = 'hit'; hit.t.k = 0; hit.t.timer = 0;
+          api.stats.hits++; api.stats.streak++; api.stats.score += zone * (1 + Math.min(4, api.stats.streak - 1) * 0.25) | 0; api.stats.best = Math.max(api.stats.best, api.stats.score);
+          api.spawnFx(hit.point, zone === 10 ? [1, 0.35, 0.3] : zone === 5 ? [1, 0.85, 0.4] : [0.7, 0.85, 1]);
+          d.live = false; d.node.visible = false;
+          if (api.onHit) api.onHit(zone, hit);
+          continue;
+        }
+        // floor / walls
+        if (next[1] < 0.012) { next[1] = 0.012; d.stuck = true; d.v = [0, 0, 0]; api.spawnPuff(next); api.stats.streak = 0; if (api.onMiss) api.onMiss(); }
+        else if (next[2] < -21.9) { next[2] = -21.9; d.stuck = true; api.spawnPuff(next); api.stats.streak = 0; if (api.onMiss) api.onMiss(); }
+        else if (Math.abs(next[0]) > 13.9) { next[0] = Math.sign(next[0]) * 13.9; d.stuck = true; api.spawnPuff(next); api.stats.streak = 0; if (api.onMiss) api.onMiss(); }
+        else if (d.age > 5) { d.live = false; d.node.visible = false; }
+        d.node.pos = next; if (!d.stuck) orientAlong(d.node, d.v);
+      }
+      for (const f of fx) { if (f.age >= f.life) { f.node.visible = false; continue; } f.age += dt; const k = f.age / f.life; const s = 1 + k * 4; f.node.scl = [s, s, s]; f.node.mat.opacity = 0.9 * (1 - k); }
+      for (const p of puffs) { if (p.age >= p.life) { p.node.visible = false; continue; } p.age += dt; const k = p.age / p.life; const s = 0.6 + k * 2.4; p.node.scl = [s, s * 0.6, s]; p.node.mat.opacity = 0.5 * (1 - k); }
+    },
+    reset() { api.stats = { shots: 0, hits: 0, score: 0, best: api.stats.best, streak: 0 }; for (const d of darts) { d.live = false; d.node.visible = false; } }
+  };
+  return api;
+}
+/* ============================================================
+   Controller pipeline — mirrors the firmware stage by stage:
+   1 input detection → 2 data processing → 3 send to PC (HID) →
+   4 game control → 5 feedback (LED / motor / buzzer)
+   Sensor frame (MPU6050 on the top rail): x = forward, y = left, z = up.
+   ============================================================ */
+const DEG = 180 / Math.PI, RAD = Math.PI / 180;
+function gauss() { let u = 0, v = 0; while (u === 0) u = Math.random(); while (v === 0) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+const HIDKEY = { W: 0x1A, A: 0x04, S: 0x16, D: 0x07, R: 0x15, Q: 0x14, SPACE: 0x2C };
+
+class Pipeline {
+  constructor() {
+    this.cfg = { sens: 12, deadzone: 1.5, gyroNoise: 0.35, gyroBias: 0.0, accNoise: 0.012, alpha: 0.98, reportHz: 100, smooth: 0.25, quantize: true, invertY: false, transport: 'ble', sampleHz: 200 };
+    this.truth = { yaw: 0, pitch: 0, roll: 0 };
+    this.prevQ = Q.ident();
+    this.raw = { gx: 0, gy: 0, gz: 0, ax: 0, ay: 0, az: 1 };
+    this.proc = { gx: 0, gy: 0, gz: 0, pitch: 0, roll: 0, yaw: 0, bias: [0, 0, 0], pitchAcc: 0, rollAcc: 0, hz: 0 };
+    this.hid = { accDx: 0, accDy: 0, mouse: [0, 0, 0, 0], kb: [0, 0, 0, 0, 0, 0, 0, 0], keys: new Set(), buttons: 0, pps: 0, kps: 0, _pc: 0, _kc: 0, _t: 0, _acc: 0, log: [], total: 0 };
+    this.game = { yaw: 0, pitch: 0, actions: new Set() };
+    this.fb = { led: 0, ledUntil: 0, motor: 0, motorUntil: 0, motorDecay: 0, buzzF: 0, buzzUntil: 0, status: 'sim', queue: [], toDevice: [] };
+    this.input = { trigger: 0, buttons: [0, 0, 0], joy: [0, 0], source: 'mouse' };
+    this.serial = null;             // latest frame from a real ESP32
+    this.recoilAcc = 0; this.calib = null; this.time = 0; this._hzAcc = 0; this._hzN = 0;
+    this.smoothed = [0, 0, 0];
+    this.history = { gx: new Float32Array(160), gy: new Float32Array(160), gz: new Float32Array(160), i: 0 };
+  }
+  setTruth(yaw, pitch, roll) { this.truth.yaw = yaw; this.truth.pitch = pitch; this.truth.roll = roll; }
+  /* teleport the gun (mode change, re-zero) without producing a fake gyro spike */
+  jumpTo(yaw, pitch, roll) { this.setTruth(yaw, pitch, roll); this.prevQ = Q.euler(yaw, pitch, roll); this.game.yaw = yaw; this.game.pitch = pitch; this.proc.yaw = 0; this.hid.accDx = 0; this.hid.accDy = 0; }
+  calibrate() { this.calib = { n: 0, sum: [0, 0, 0], until: this.time + 1.0 }; }
+  recenter() { this.proc.yaw = 0; this.game.yaw = this.truth.yaw; this.game.pitch = this.truth.pitch; }
+  /* device-side feedback events */
+  onFire() { const f = this.fb; f.led = 1; f.ledUntil = this.time + 0.06; f.motor = 255; f.motorUntil = this.time + 0.03; f.motorDecay = 0.13; f.buzzF = 900; f.buzzUntil = this.time + 0.03; }
+  onEmpty() { const f = this.fb; f.buzzF = 300; f.buzzUntil = this.time + 0.08; }
+  onReload(done) { const f = this.fb; f.buzzF = done ? 820 : 600; f.buzzUntil = this.time + 0.035; }
+  onHitFromGame(zone) {
+    const f = this.fb, t = this.time;
+    f.queue.push({ at: t, fn: () => { f.motor = 180; f.motorUntil = t + 0.04; f.motorDecay = 0.02; f.buzzF = zone === 10 ? 1800 : 1500; f.buzzUntil = t + 0.04; } });
+    f.queue.push({ at: t + 0.09, fn: () => { f.motor = 180; f.motorUntil = t + 0.13; f.motorDecay = 0.02; f.buzzF = zone === 10 ? 2200 : 1500; f.buzzUntil = t + 0.13; } });
+    f.toDevice.push(`H${zone}`);
+  }
+  step(dt) {
+    const c = this.cfg, t = (this.time += dt), src = this.input.source;
+    /* ---------- 1. INPUT DETECTION ---------- */
+    let raw = this.raw;
+    if (src === 'serial' && this.serial) {
+      const s = this.serial; raw.gx = s.gx; raw.gy = s.gy; raw.gz = s.gz; raw.ax = s.ax; raw.ay = s.ay; raw.az = s.az;
+      this.truth.yaw = s.yaw * RAD; this.truth.pitch = s.pitch * RAD; this.truth.roll = s.roll * RAD;
+      this.input.trigger = s.trig; this.input.buttons = [s.b1, s.b2, s.b3]; this.input.joy = [s.jx, s.jy];
+      this.prevQ = Q.euler(this.truth.yaw, this.truth.pitch, this.truth.roll);
+    } else {
+      const qNow = Q.euler(this.truth.yaw, this.truth.pitch, this.truth.roll);
+      let dq = Q.norm(Q.mul(Q.conj(this.prevQ), qNow)); if (dq[3] < 0) dq = [-dq[0], -dq[1], -dq[2], -dq[3]];
+      const sl = Math.hypot(dq[0], dq[1], dq[2]), ang = 2 * Math.atan2(sl, dq[3]);
+      const k = sl > 1e-9 ? ang / sl / Math.max(dt, 1e-4) : 0;
+      const wg = [dq[0] * k, dq[1] * k, dq[2] * k];                  // gun frame rad/s: x right, y up, z back
+      const bias = [0.4 * c.gyroBias, -0.7 * c.gyroBias, c.gyroBias];
+      let gx = -wg[2] * DEG + bias[0] + gauss() * c.gyroNoise, gy = -wg[0] * DEG + bias[1] + gauss() * c.gyroNoise, gz = wg[1] * DEG + bias[2] + gauss() * c.gyroNoise;
+      const up = Q.rotate(Q.conj(qNow), [0, 1, 0]);                  // world up in gun frame
+      let ax = -up[2] + this.recoilAcc + gauss() * c.accNoise, ay = -up[0] + gauss() * c.accNoise, az = up[1] + gauss() * c.accNoise;
+      if (this.fb.motor > 0) { const j = this.fb.motor / 255 * 0.05; ax += (Math.random() - 0.5) * j; ay += (Math.random() - 0.5) * j; az += (Math.random() - 0.5) * j; }
+      if (c.quantize) { const qg = v => Math.max(-2000, Math.min(2000, Math.round(v * 16.4) / 16.4)), qa = v => Math.max(-2, Math.min(2, Math.round(v * 16384) / 16384)); gx = qg(gx); gy = qg(gy); gz = qg(gz); ax = qa(ax); ay = qa(ay); az = qa(az); }
+      raw.gx = gx; raw.gy = gy; raw.gz = gz; raw.ax = ax; raw.ay = ay; raw.az = az;
+      this.prevQ = qNow;
+      this.recoilAcc *= Math.exp(-dt * 55);
+    }
+    const h = this.history; h.gx[h.i] = raw.gx; h.gy[h.i] = raw.gy; h.gz[h.i] = raw.gz; h.i = (h.i + 1) % 160;
+    this._hzAcc += dt; this._hzN++; if (this._hzAcc >= 0.5) { this.proc.hz = Math.round(this._hzN / this._hzAcc); this._hzAcc = 0; this._hzN = 0; }
+    /* ---------- 2. DATA PROCESSING (what the firmware does) ---------- */
+    const p = this.proc;
+    if (this.calib) { const cb = this.calib; cb.n++; cb.sum[0] += raw.gx; cb.sum[1] += raw.gy; cb.sum[2] += raw.gz; if (t >= cb.until) { p.bias = cb.sum.map(v => v / cb.n); this.calib = null; } }
+    const dz = v => Math.abs(v) < c.deadzone ? 0 : v;
+    const tgt = [dz(raw.gx - p.bias[0]), dz(raw.gy - p.bias[1]), dz(raw.gz - p.bias[2])];
+    /* the firmware runs these at sampleHz; scale the per-sample constants to this frame's dt */
+    const nS = Math.max(1, dt * c.sampleHz), kS = 1 - Math.pow(Math.max(0, Math.min(0.999, c.smooth)), nS);
+    for (let i = 0; i < 3; i++) this.smoothed[i] += (tgt[i] - this.smoothed[i]) * kS;
+    p.gx = this.smoothed[0]; p.gy = this.smoothed[1]; p.gz = this.smoothed[2];
+    p.pitchAcc = Math.atan2(raw.ax, Math.hypot(raw.ay, raw.az)) * DEG; p.rollAcc = Math.atan2(-raw.ay, raw.az) * DEG;
+    const tau = c.alpha / (1 - c.alpha) / c.sampleHz; let aEff = tau / (tau + dt);
+    const gN = Math.hypot(raw.ax, raw.ay, raw.az); if (Math.abs(gN - 1) > 0.15) aEff = 1;   // accelerometer only trusted near 1 g (recoil, shakes)
+    p.pitch = aEff * (p.pitch + (-p.gy) * dt) + (1 - aEff) * p.pitchAcc;
+    p.roll = aEff * (p.roll + (-p.gx) * dt) + (1 - aEff) * p.rollAcc;
+    p.yaw += p.gz * dt;
+    /* ---------- 3. SEND TO PC — HID reports ---------- */
+    const hd = this.hid;
+    hd.accDx += -p.gz * dt * c.sens; hd.accDy += (c.invertY ? -1 : 1) * p.gy * dt * c.sens;
+    const inp = this.input;
+    const keys = new Set();
+    if (inp.buttons[0]) keys.add(HIDKEY.R); if (inp.buttons[1]) keys.add(HIDKEY.SPACE); if (inp.buttons[2]) keys.add(HIDKEY.Q);
+    if (inp.joy[1] > 0.5) keys.add(HIDKEY.W); if (inp.joy[1] < -0.5) keys.add(HIDKEY.S); if (inp.joy[0] > 0.5) keys.add(HIDKEY.D); if (inp.joy[0] < -0.5) keys.add(HIDKEY.A);
+    const btn = inp.trigger ? 1 : 0;
+    let changedKeys = keys.size !== hd.keys.size || [...keys].some(k => !hd.keys.has(k));
+    hd._acc += dt; const period = 1 / c.reportHz; let dxTot = 0, dyTot = 0;
+    if (hd._acc > 0.25) hd._acc = 0.25;
+    while (hd._acc >= period) {
+      hd._acc -= period;
+      let dx = Math.max(-127, Math.min(127, Math.round(hd.accDx))), dy = Math.max(-127, Math.min(127, Math.round(hd.accDy)));
+      hd.accDx -= dx; hd.accDy -= dy;   // what does not fit in int8 is carried to the next report
+      if (dx || dy || btn !== hd.buttons) { hd.mouse = [btn, dx, dy, 0]; hd._pc++; hd.total++; hd.log.push({ t, kind: 'M', bytes: hd.mouse.slice() }); }
+      hd.buttons = btn; dxTot += dx; dyTot += dy;
+      if (changedKeys) { const arr = [...keys].slice(0, 6); hd.kb = [0, 0, ...arr, ...new Array(6 - arr.length).fill(0)]; hd.keys = keys; hd._kc++; hd.total++; hd.log.push({ t, kind: 'K', bytes: hd.kb.slice() }); changedKeys = false; }
+    }
+    if (hd.log.length > 40) hd.log.splice(0, hd.log.length - 40);
+    hd._t += dt; if (hd._t >= 1) { hd.pps = Math.round(hd._pc / hd._t); hd.kps = hd._kc; hd._pc = 0; hd._kc = 0; hd._t = 0; }
+    /* ---------- 4. GAME CONTROL (what the PC does with the reports) ---------- */
+    const g = this.game;
+    g.yaw += -dxTot / c.sens * RAD; g.pitch += -dyTot / c.sens * RAD * (c.invertY ? -1 : 1);
+    g.pitch = Math.max(-1.45, Math.min(1.45, g.pitch));
+    g.actions.clear(); if (btn) g.actions.add('FIRE'); if (keys.has(HIDKEY.R)) g.actions.add('RELOAD'); if (keys.has(HIDKEY.SPACE)) g.actions.add('JUMP'); if (keys.has(HIDKEY.Q)) g.actions.add('SWITCH');
+    if (keys.has(HIDKEY.W) || keys.has(HIDKEY.S) || keys.has(HIDKEY.A) || keys.has(HIDKEY.D)) g.actions.add('MOVE');
+    /* ---------- 5. FEEDBACK timers ---------- */
+    const f = this.fb;
+    for (let i = f.queue.length - 1; i >= 0; i--) if (t >= f.queue[i].at) { const e = f.queue.splice(i, 1)[0]; e.fn(); }
+    if (t > f.ledUntil) f.led = 0;
+    if (t > f.motorUntil && f.motor > 0) { f.motor = Math.max(0, f.motor - dt / Math.max(f.motorDecay, 0.001) * 255); }
+    if (t > f.buzzUntil) f.buzzF = 0;
+  }
+  latencyEstimate() {
+    const c = this.cfg; const tr = c.transport;
+    const link = tr === 'ble' ? '7.5–15 ms BLE interval' : tr === 'usb' ? '1–8 ms USB polling' : '~10 ms serial + bridge';
+    const total = tr === 'ble' ? '≈ 25–35 ms' : tr === 'usb' ? '≈ 18–25 ms' : '≈ 28–40 ms';
+    return { link, total };
+  }
+}
+
+/* ---------------- sound (Web Audio) ---------------- */
+const Sfx = {
+  ctx: null, on: true, master: null,
+  ensure() { if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; } try { const AC = window.AudioContext || window.webkitAudioContext; this.ctx = new AC(); this.master = this.ctx.createGain(); this.master.gain.value = 0.35; this.master.connect(this.ctx.destination); } catch (e) { this.ctx = null; } },
+  tone(f, ms, type = 'square', gain = 0.06, slide = 0) {
+    if (!this.on || !this.ctx) return; const c = this.ctx, o = c.createOscillator(), g = c.createGain(), t0 = c.currentTime;
+    o.type = type; o.frequency.setValueAtTime(f, t0); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, f + slide), t0 + ms / 1000);
+    g.gain.setValueAtTime(gain, t0); g.gain.exponentialRampToValueAtTime(0.0005, t0 + ms / 1000);
+    o.connect(g); g.connect(this.master); o.start(t0); o.stop(t0 + ms / 1000 + 0.02);
+  },
+  noise(ms, gain = 0.25, cutoff = 1400) {
+    if (!this.on || !this.ctx) return; const c = this.ctx, n = Math.floor(c.sampleRate * ms / 1000), buf = c.createBuffer(1, n, c.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2);
+    const s = c.createBufferSource(); s.buffer = buf; const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff; const g = c.createGain(); g.gain.value = gain;
+    s.connect(f); f.connect(g); g.connect(this.master); s.start();
+  },
+  fire() { this.noise(90, 0.5, 1800); this.tone(180, 70, 'sine', 0.12, -120); },
+  empty() { this.tone(240, 25, 'square', 0.05); },
+  reloadStart() { this.tone(500, 40, 'square', 0.04); this.noise(60, 0.15, 900); },
+  reloadEnd() { this.tone(760, 40, 'square', 0.05); setTimeout(() => this.tone(1020, 50, 'square', 0.05), 70); },
+  hit(zone) { this.tone(zone === 10 ? 1560 : zone === 5 ? 1240 : 980, 90, 'sine', 0.12, 200); if (zone === 10) setTimeout(() => this.tone(2080, 120, 'sine', 0.1), 90); },
+  buzzer(f, ms) { this.tone(f, ms, 'square', 0.03); },
+  click() { this.tone(2000, 12, 'square', 0.02); }
+};
+/* ============================================================
+   App — modes, inputs, HUD, bench panel, serial / gyro sources
+   ============================================================ */
+const FUTURE = [
+  { t: 'Drift-free absolute aim with 9-DoF fusion', why: 'The MPU6050 has no magnetometer, so yaw drifts. A BNO085 (fusion on-chip, quaternion output) or an ICM-20948 + Madgwick filter gives an absolute heading — the prerequisite for VR-style pointing.', refs: [['Adafruit BNO085 guide', 'https://learn.adafruit.com/adafruit-9-dof-orientation-imu-fusion-breakout-bno085/overview'], ['Madgwick / x-io AHRS', 'https://x-io.co.uk/open-source-imu-and-ahrs-algorithms/'], ['SlimeVR ESP32 tracker firmware', 'https://github.com/SlimeVR/SlimeVR-Tracker-ESP']] },
+  { t: 'Composite BLE HID: gamepad + mouse + keyboard', why: 'Expose the joystick as real analog gamepad axes and the trigger as a gamepad button while keeping mouse-look, so console-style games work without a bridge.', refs: [['ESP32-BLE-CompositeHID', 'https://github.com/Mystfit/ESP32-BLE-CompositeHID'], ['ESP32-BLE-Gamepad', 'https://github.com/lemmingDev/ESP32-BLE-Gamepad']] },
+  { t: 'Wired USB HID on ESP32-S3 (TinyUSB)', why: 'The S3 has native USB: the gun enumerates as a plug-and-play mouse/keyboard with 1 ms polling — no pairing, lowest latency for the demo booth.', refs: [['Arduino-ESP32 USB API', 'https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/api/usb.html'], ['ESP-IDF TinyUSB HID example', 'https://github.com/espressif/esp-idf/blob/master/examples/peripherals/usb/device/tusb_hid/README.md']] },
+  { t: 'Show up in SteamVR as a tracked controller', why: 'An OpenVR driver turns the orientation stream into a virtual controller pose, so VR shooters see the blaster natively. Rotation-only first; add position later.', refs: [['Simple OpenVR driver tutorial', 'https://github.com/terminal29/Simple-OpenVR-Driver-Tutorial'], ['OpenVR driver docs (Valve)', 'https://chromium.googlesource.com/external/github.com/ValveSoftware/openvr/+/master/samples/drivers/drivers/tutorial/README.md']] },
+  { t: '6-DoF position tracking', why: 'Add position by strapping a phone (ARCore/ARKit) or a Quest controller to the rail, or an IR LED constellation seen by a webcam. Nerf-brand VR blasters are already being patented — the direction is clear.', refs: [['Nerf guns as VR controllers (GameRant)', 'https://gamerant.com/nerf-guns-vr-controllers/'], ['DIY VR haptic gun (VRHapticGun)', 'https://github.com/robegamesios/VRHapticGun']] },
+  { t: 'Real recoil and crisp haptics', why: 'Replace the ERM coin motor with an LRA driven by a DRV2605L (123 built-in waveforms, ~5 ms response) and add a 12 V push solenoid for a stock kick, as ForceTube-style gunstocks do.', refs: [['Adafruit DRV2605L guide', 'https://learn.adafruit.com/adafruit-drv2605-haptic-controller-breakout/overview'], ['ProTubeVR ForceTube haptic gunstock', 'https://www.protubevr.com/en/543-forcetube-recoil-gunstock']] },
+  { t: 'Gesture actions with on-device TinyML', why: 'Shake-to-reload, tilt-to-holster, flick-to-switch-weapon: train a small classifier on the IMU stream with Edge Impulse and run it on the ESP32.', refs: [['Gesture classification on ESP32 (Hackster)', 'https://www.hackster.io/Yukio/gesture-classification-with-esp32-and-tinyml-dab252'], ['ESP32 + MPU6050 TinyML gestures', 'https://github.com/anwiryani/First-TinyML-gesture-recognition-with-ESP32-and-MPU6050']] },
+  { t: 'Lower latency: DMP at 200 Hz + tight BLE interval', why: 'Let the MPU6050 digital motion processor do the fusion in hardware, poll on the INT pin, and request a 7.5 ms BLE connection interval — cuts sensor-to-screen latency to ~20 ms.', refs: [['i2cdevlib MPU6050_DMP6 example', 'https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/MPU6050/examples/MPU6050_DMP6']] },
+  { t: 'Multiplayer laser-tag mode', why: 'Two blasters + an IR emitter and a TSOP38238 receiver on a vest; hits exchanged over ESP-NOW (no router, ~2 ms).', refs: [['ESP-NOW API (ESP-IDF)', 'https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/network/esp_now.html']] },
+  { t: 'Direct Unity / game-engine integration', why: 'Read the same serial telemetry inside Unity to drive a first-person weapon — a proven pattern for Arduino + MPU6050 student projects.', refs: [['Arduino-VR-Gun (Unity + MPU6050)', 'https://github.com/srvk-99/Arduino-VR-Gun'], ['Nerf-gun Warzone controller', 'https://github.com/alfredosequeida/nerf-gun-call-of-duty-warzone-controller']] },
+  { t: 'On-gun OLED ammo counter and web config app', why: 'An SSD1306 shows ammo, fire mode and battery; a Web Serial settings page (this panel is the seed) stores sensitivity profiles per game in NVS.', refs: [['Adafruit SSD1306 library', 'https://github.com/adafruit/Adafruit_SSD1306']] },
+  { t: 'Power: fuel gauge + auto-sleep', why: 'MAX17048 fuel gauge for a real battery percentage, ESP32 deep sleep after 5 min idle with wake-on-trigger, TP4056 charging through the stock cap.', refs: [['ESP32 sleep modes (ESP-IDF)', 'https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/sleep_modes.html']] },
+];
+
+(function main() {
+  const $ = id => document.getElementById(id);
+  const app = $('app'), canvas = $('gl'), viewport = $('viewport');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let R = null;
+  try { R = new Renderer(canvas); } catch (e) { $('glFallback').hidden = false; }
+
+  /* ---------- theme → scene colours ---------- */
+  const THEME = {
+    dark: { bg: [0.055, 0.07, 0.115], ground: [0.11, 0.13, 0.20], hemiSky: [0.50, 0.55, 0.68], hemiGround: [0.26, 0.24, 0.24], light: [0.78, 0.75, 0.70], fog: [0.055, 0.07, 0.115] },
+    light: { bg: [0.86, 0.88, 0.92], ground: [0.76, 0.78, 0.85], hemiSky: [0.62, 0.66, 0.76], hemiGround: [0.40, 0.38, 0.36], light: [0.85, 0.82, 0.78], fog: [0.86, 0.88, 0.92] },
+  };
+  const mq = matchMedia('(prefers-color-scheme: dark)');
+  function isDark() { const a = document.documentElement.getAttribute('data-theme'); return a === 'dark' || (a !== 'light' && mq.matches); }
+  let theme = isDark() ? THEME.dark : THEME.light, tokens = {};
+  function readTokens() { const cs = getComputedStyle(document.documentElement); tokens = { s1: cs.getPropertyValue('--series-1').trim(), s2: cs.getPropertyValue('--series-2').trim(), s3: cs.getPropertyValue('--series-3').trim(), ink3: cs.getPropertyValue('--ink-3').trim(), line: cs.getPropertyValue('--line').trim(), ink: cs.getPropertyValue('--ink').trim() }; theme = isDark() ? THEME.dark : THEME.light; }
+  readTokens(); mq.addEventListener('change', readTokens); new MutationObserver(readTokens).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  /* ---------- scene ---------- */
+  const scene = new Node('root');
+  const cam = new Camera(38, 0.02, 90); scene.add(cam);
+  const gun = R ? buildGun(R) : null;
+  const range = R ? buildRange(R) : null;
+  let pedestal = null;
+  if (R) {
+    scene.add(gun.root); range.root.visible = false; scene.add(range.root);
+    pedestal = scene.add(new Mesh(R.geometry(Geo.cylinder(0.42, 0.46, 0.02, 48)), { color: theme.ground, spec: 0.05, shininess: 8, castShadow: false })); pedestal.pos = [0, -0.34, 0];
+  }
+  const pipe = new Pipeline();
+  const S = {
+    mode: 'explore', explode: 0, xray: false, autoRotate: false,
+    orbit: { theta: -2.15, phi: 0.32, dist: 0.95, target: [0, 0.01, -0.02] },
+    player: { x: 0, z: 2.2, y: 0, vy: 0, bob: 0, bobPhase: 0 },
+    ammo: 6, mag: 6, reloading: 0, reloadTotal: 1.15, fireMode: 'semi', autoTimer: 0, recoil: 0, flash: 0, camKick: 0,
+    trigger: 0, btn: [0, 0, 0], joyKeys: [0, 0], joyTouch: [0, 0], hover: null, selected: null, source: 'mouse',
+    truthMouse: { yaw: 0, pitch: 0 }, gyro: { ok: false, a0: null, yaw: 0, pitch: 0, roll: 0, lastA: 0, unwrap: 0, pendingJump: false },
+    serial: { port: null, reader: null, writer: null, frames: 0, ok: false },
+    shake: 0, benchDrag: null, lastPick: 0, fpsAcc: 0, fpsN: 0, fps: 0, panelTab: 'signal', pointerLock: false, time: 0,
+  };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const wrapPi = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; };
+  const fmt = (v, d = 1) => (v < 0 ? '−' : '+') + Math.abs(v).toFixed(d);
+  const hex = b => b.map(v => ((v < 0 ? 256 + v : v) & 255).toString(16).padStart(2, '0')).join(' ');
+
+  /* ---------- sizing ---------- */
+  let W = 1, H = 1, dpr = 1;
+  function resize() {
+    const r = viewport.getBoundingClientRect(); W = Math.max(1, r.width); H = Math.max(1, r.height); dpr = Math.min(devicePixelRatio || 1, 2);
+    if (R) R.resize(W, H, dpr); cam.updateProj(W / H);
+  }
+  new ResizeObserver(resize).observe(viewport); resize();
+
+  /* ---------- modes ---------- */
+  const modeBtns = [...document.querySelectorAll('.mode-btn')];
+  function setMode(m) {
+    if (!R) return;
+    S.mode = m; app.dataset.mode = m;
+    modeBtns.forEach(b => { const on = b.dataset.mode === m; b.classList.toggle('is-active', on); b.setAttribute('aria-selected', on); });
+    $('exploreTools').hidden = m !== 'explore'; $('rangeHud').hidden = m !== 'range'; $('benchHud').hidden = m !== 'bench';
+    $('vpHint').textContent = m === 'explore' ? 'Drag to orbit · scroll to zoom · click a part for its pins' : m === 'bench' ? 'Drag to move the gun · Space or the trigger button to fire · use a phone or the real ESP32 from the Connect tab' : '';
+    if (m === 'range') {
+      cam.add(gun.root); range.root.visible = true; pedestal.visible = false; cam.fov = 70; cam.near = 0.02;
+      gun.st.explode = 0; gun.st.xray = false; S.explode = 0; $('explode').value = 0; hideInfo();
+      S.truthMouse.yaw = 0; S.truthMouse.pitch = 0; pipe.jumpTo(0, 0, 0); S._yaw0 = 0; S.gyro.pendingJump = true; gun.root.scl = [0.5, 0.5, 0.5]; range.reset(); S.player.x = 0; S.player.z = 2.2; updateHud(true);
+      $('hudMsg').hidden = false; $('hudMsg').textContent = isTouch ? 'Drag on the right to aim · left stick to move · hold TRIGGER' : 'Click to capture the mouse · move to aim · click / Space to fire · R reload · Q fire mode · WASD move';
+    } else {
+      scene.add(gun.root); range.root.visible = false; pedestal.visible = true; cam.fov = 38; cam.near = 0.02;
+      gun.root.pos = [0, 0, 0]; gun.root.rot = Q.ident(); gun.root.scl = [1, 1, 1];
+      if (document.pointerLockElement) document.exitPointerLock();
+      if (m === 'bench') { S.truthMouse.yaw = 0; S.truthMouse.pitch = 0; pipe.jumpTo(0, 0, 0); S._yaw0 = 0; S.gyro.pendingJump = true; hideInfo(); }
+      if (m === 'explore') { S.truthMouse.yaw = 0; S.truthMouse.pitch = 0; pipe.jumpTo(0, 0, 0); S._yaw0 = 0; }
+    }
+    cam.updateProj(W / H); Sfx.ensure();
+  }
+  modeBtns.forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+
+  /* ---------- explore tools ---------- */
+  $('explode').addEventListener('input', e => { S.explode = e.target.value / 100; });
+  $('btnXray').addEventListener('click', () => { S.xray = !S.xray; $('btnXray').classList.toggle('is-on', S.xray); $('btnXray').setAttribute('aria-pressed', S.xray); });
+  $('btnAutoRotate').addEventListener('click', () => { S.autoRotate = !S.autoRotate; $('btnAutoRotate').classList.toggle('is-on', S.autoRotate); $('btnAutoRotate').setAttribute('aria-pressed', S.autoRotate); });
+  $('btnFireTest').addEventListener('click', () => { Sfx.ensure(); pressTrigger(true); setTimeout(() => pressTrigger(false), 120); });
+  document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => { const v = +b.dataset.preset; S.explode = v; $('explode').value = v * 100; if (v > 0) S.xray = false; }));
+
+  /* ---------- component info ---------- */
+  const infoCard = $('infoCard');
+  const highlight = new Map();
+  function setHighlight(id, on) {
+    if (!id || !gun.comps[id]) return;
+    for (const n of gun.comps[id]) n.traverse(m => { if (!m.geo) return; if (on) { if (!highlight.has(m)) highlight.set(m, m.mat.emissive); m.mat.emissive = [0.30, 0.20, 0.04]; } else if (highlight.has(m)) { m.mat.emissive = highlight.get(m); highlight.delete(m); } });
+  }
+  function showInfo(id) {
+    const c = COMPONENTS[id]; if (!c) return;
+    if (S.selected && S.selected !== S.hover) setHighlight(S.selected, false);
+    S.selected = id; setHighlight(id, true);
+    $('infoName').textContent = c.name; $('infoRole').textContent = c.role; $('infoPins').textContent = c.pins; $('infoSpec').textContent = c.spec;
+    infoCard.hidden = false;
+  }
+  function hideInfo() { if (S.selected) setHighlight(S.selected, false); S.selected = null; infoCard.hidden = true; }
+  $('infoClose').addEventListener('click', hideInfo);
+  document.addEventListener('click', e => { const t = e.target.closest('[data-comp]'); if (!t || !R) return; if (S.mode !== 'explore') setMode('explore'); if (S.explode < 0.5) { S.explode = 1; $('explode').value = 100; } showInfo(t.dataset.comp); });
+
+  /* ---------- labels & leader lines ---------- */
+  const labelsLayer = $('labels'), leaders = $('leaders');
+  const labelEls = {}, leaderEls = {};
+  const LABEL_ORDER = ['imu', 'esp32', 'trigger', 'switch', 'joystick', 'buttons', 'motor', 'buzzer', 'ledMuzzle', 'ledStatus', 'ledAmmo', 'mag', 'battery', 'charger', 'switchPwr', 'barrel', 'usb'];
+  for (const id of LABEL_ORDER) {
+    const el = document.createElement('button'); el.className = 'lbl'; el.type = 'button'; el.textContent = COMPONENTS[id].name; el.dataset.id = id;
+    el.addEventListener('click', () => showInfo(id)); el.addEventListener('pointerenter', () => hoverComp(id)); el.addEventListener('pointerleave', () => hoverComp(null));
+    labelsLayer.appendChild(el); labelEls[id] = el;
+    const ln = document.createElementNS('http://www.w3.org/2000/svg', 'line'); leaders.appendChild(ln); leaderEls[id] = ln;
+  }
+  function hoverComp(id) { if (S.hover === id) return; if (S.hover && S.hover !== S.selected) setHighlight(S.hover, false); S.hover = id; if (id) setHighlight(id, true); labelsLayer.querySelectorAll('.lbl').forEach(l => l.classList.toggle('is-hover', l.dataset.id === id)); }
+  function updateLabels() {
+    const show = S.mode === 'explore' && (S.explode > 0.45 || S.xray);
+    labelsLayer.classList.toggle('is-visible', show); leaders.classList.toggle('is-visible', show);
+    if (!show) return;
+    const placed = [];
+    for (const id of LABEL_ORDER) {
+      const nodes = gun.comps[id]; const el = labelEls[id], ln = leaderEls[id];
+      let p = [0, 0, 0]; for (const n of nodes) p = V3.add(p, n.worldPos()); p = V3.scale(p, 1 / nodes.length);
+      const sp = cam.project(p, W, H);
+      if (!sp || !sp.on) { el.style.display = 'none'; ln.style.display = 'none'; continue; }
+      el.style.display = ''; ln.style.display = '';
+      const lw = el.offsetWidth || 120, lh = 22;
+      let side = 1; if (sp.x + 40 + lw > W - 8) side = -1;
+      let lx = side > 0 ? sp.x + 40 : sp.x - 40 - lw, ly = sp.y - 26;
+      lx = Math.max(6, Math.min(W - lw - 6, lx)); ly = Math.max(12, Math.min(H - 12, ly));
+      for (let it = 0; it < 10; it++) { let moved = false; for (const q of placed) { if (lx < q.x + q.w + 12 && lx + lw + 12 > q.x && Math.abs(q.y - ly) < lh) { ly = q.y + lh; moved = true; } } if (!moved) break; }
+      ly = Math.max(12, Math.min(H - 12, ly)); placed.push({ x: lx, y: ly, w: lw });
+      el.style.transform = `translate(${lx}px, ${ly}px) translateY(-50%)`;
+      ln.setAttribute('x1', sp.x); ln.setAttribute('y1', sp.y); ln.setAttribute('x2', side > 0 ? lx : lx + lw); ln.setAttribute('y2', ly);
+      el.classList.toggle('is-selected', S.selected === id);
+    }
+  }
+
+  /* ---------- bench panel tabs ---------- */
+  const panel = $('panel');
+  document.querySelectorAll('.panel-tab').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
+  function setTab(t) { S.panelTab = t; document.querySelectorAll('.panel-tab').forEach(b => { const on = b.dataset.tab === t; b.classList.toggle('is-active', on); b.setAttribute('aria-selected', on); }); document.querySelectorAll('.pane').forEach(p => { p.hidden = p.dataset.pane !== t; }); panel.classList.remove('is-collapsed'); }
+  $('btnPanel').addEventListener('click', () => { panel.classList.toggle('is-collapsed'); setTimeout(resize, 350); });
+  $('panelHandle').addEventListener('click', () => { panel.classList.toggle('is-collapsed'); setTimeout(resize, 350); });
+
+  /* ---------- tune controls ---------- */
+  const TUNE = [['s-sens', 'sens', v => v.toFixed(0) + ' counts/°'], ['s-dead', 'deadzone', v => v.toFixed(1) + ' °/s'], ['s-noise', 'gyroNoise', v => v.toFixed(2) + ' °/s σ'], ['s-bias', 'gyroBias', v => fmt(v, 1) + ' °/s'], ['s-alpha', 'alpha', v => v.toFixed(3)], ['s-rate', 'reportHz', v => v.toFixed(0) + ' Hz'], ['s-smooth', 'smooth', v => v.toFixed(2)]];
+  const tuneDefaults = {};
+  for (const [id, key, f] of TUNE) {
+    const el = $(id), out = $('o-' + id.slice(2)); tuneDefaults[key] = pipe.cfg[key]; el.value = pipe.cfg[key]; out.textContent = f(pipe.cfg[key]);
+    el.addEventListener('input', () => { pipe.cfg[key] = +el.value; out.textContent = f(pipe.cfg[key]); });
+  }
+  $('k-quant').addEventListener('change', e => pipe.cfg.quantize = e.target.checked);
+  $('k-inverty').addEventListener('change', e => pipe.cfg.invertY = e.target.checked);
+  document.querySelectorAll('input[name="transport"]').forEach(r => r.addEventListener('change', () => { pipe.cfg.transport = r.value; const hz = r.value === 'usb' ? 125 : 100; pipe.cfg.reportHz = hz; $('s-rate').value = hz; $('o-rate').textContent = hz + ' Hz'; }));
+  $('btnCalib').addEventListener('click', () => { pipe.calibrate(); flashBtn($('btnCalib'), 'Calibrating… hold still'); });
+  $('btnRecenter').addEventListener('click', () => { recenter(); flashBtn($('btnRecenter'), 'Re-centred'); });
+  $('btnResetTune').addEventListener('click', () => { for (const [id, key, f] of TUNE) { pipe.cfg[key] = tuneDefaults[key]; $(id).value = tuneDefaults[key]; $('o-' + id.slice(2)).textContent = f(tuneDefaults[key]); } pipe.proc.bias = [0, 0, 0]; });
+  document.querySelectorAll('[data-scenario]').forEach(b => b.addEventListener('click', () => {
+    const s = b.dataset.scenario; const set = (k, v) => { pipe.cfg[k] = v; const row = TUNE.find(t => t[1] === k); if (row) { $(row[0]).value = v; $('o-' + row[0].slice(2)).textContent = row[2](v); } };
+    if (s === 'ideal') { set('gyroNoise', 0); set('gyroBias', 0); set('deadzone', 0); set('smooth', 0); }
+    if (s === 'uncal') { set('gyroNoise', 0.35); set('gyroBias', 3.0); set('deadzone', 0); pipe.proc.bias = [0, 0, 0]; }
+    if (s === 'noisy') { set('gyroNoise', 2.5); set('deadzone', 0.5); set('smooth', 0.1); }
+    if (s === 'tuned') { set('gyroNoise', 0.35); set('gyroBias', 0); set('deadzone', 1.5); set('smooth', 0.25); pipe.calibrate(); }
+    document.querySelectorAll('[data-scenario]').forEach(x => x.classList.toggle('is-on', x === b));
+  }));
+  function flashBtn(b, txt) { const o = b.dataset.label || (b.dataset.label = b.textContent); b.textContent = txt; b.disabled = true; setTimeout(() => { b.textContent = o; b.disabled = false; }, 1200); }
+  function recenter() {
+    if (S.source === 'gyro') { S.gyro.a0 = null; S.gyro.pendingJump = true; }
+    else if (S.source === 'serial') { sendToDevice('Z'); pipe.recenter(); }
+    else if (S.mode === 'range') { pipe.recenter(); }                              // snap the game camera to where the gun points
+    else { S.truthMouse.yaw = 0; S.truthMouse.pitch = 0; pipe.jumpTo(0, 0, 0); }   // put the gun back to its rest pose
+    S._yaw0 = pipe.truth.yaw;
+  }
+
+  /* ---------- pins & future ---------- */
+  $('pinRows').innerHTML = PINMAP.map(r => `<tr data-comp="${r[3]}" tabindex="0"><td>${r[0]}</td><td class="mono">${r[1]}</td><td class="muted">${r[2]}</td></tr>`).join('');
+  $('futureList').innerHTML = FUTURE.map((f, i) => `<li class="future-item"><h4>${f.t}</h4><p>${f.why}</p><div class="refs">${f.refs.map(r => `<a href="${r[1]}" target="_blank" rel="noopener">${r[0]} ↗</a>`).join('')}</div></li>`).join('');
+
+  /* ---------- sound / help / modals ---------- */
+  $('btnSound').addEventListener('click', () => { Sfx.ensure(); Sfx.on = !Sfx.on; $('btnSound').setAttribute('aria-pressed', Sfx.on); $('btnSound').classList.toggle('is-off', !Sfx.on); });
+  const openModal = id => { $(id).hidden = false; $(id).querySelector('.modal-card').focus(); };
+  const closeModals = () => document.querySelectorAll('.modal').forEach(m => m.hidden = true);
+  $('btnHelp').addEventListener('click', () => openModal('modalHelp'));
+  $('btnFirmware').addEventListener('click', () => { $('fwTitle').textContent = 'FalconBlaster.ino — ESP32 firmware'; $('fwText').textContent = $('fwSrc').textContent.trim(); openModal('modalFirmware'); });
+  $('btnBridge').addEventListener('click', () => { $('fwTitle').textContent = 'bridge.py — serial → mouse & keyboard for any game'; $('fwText').textContent = $('bridgeSrc').textContent.trim(); openModal('modalFirmware'); });
+  $('btnCopyFw').addEventListener('click', async () => { try { await navigator.clipboard.writeText($('fwText').textContent); flashBtn($('btnCopyFw'), 'Copied'); } catch (e) { flashBtn($('btnCopyFw'), 'Select & copy manually'); } });
+  document.querySelectorAll('.modal').forEach(m => { m.addEventListener('click', e => { if (e.target === m) m.hidden = true; }); m.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => m.hidden = true)); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModals(); });
+
+  /* ---------- weapon logic ---------- */
+  function muzzleWorld() { return gun.muzzle.worldPos(); }
+  function shoot() {
+    S.ammo--; gun.st.ammo = S.ammo; S.recoil = 1; S.flash = 1; S.camKick = reduceMotion ? 0 : 1;
+    pipe.onFire(); pipe.recoilAcc = -1.1; Sfx.fire(); if (navigator.vibrate) navigator.vibrate(30);
+    if (S.mode === 'range') {
+      const origin = muzzleWorld(); const fwd = cam.forward(); const aimPoint = V3.add(cam.worldPos(), V3.scale(fwd, 40));
+      range.fire(origin, V3.norm(V3.sub(aimPoint, origin)), S.fireMode === 'auto' ? 0.035 : 0.012);
+    }
+    if (S.source === 'serial') sendToDevice('F');
+    if (S.ammo === 0) setTimeout(() => { if (S.ammo === 0) pipe.onEmpty(); }, 250);
+    updateHud();
+  }
+  function pressTrigger(down) {
+    if (!R) return;
+    S.trigger = down ? 1 : 0; gun.st.trigger = S.trigger;
+    if (down) { if (S.reloading > 0) return; if (S.ammo <= 0) { Sfx.empty(); pipe.onEmpty(); return; } shoot(); S.autoTimer = 1 / 6; }
+  }
+  function reload() { if (S.reloading > 0 || S.ammo === S.mag) return; S.reloading = S.reloadTotal; Sfx.reloadStart(); pipe.onReload(false); if (S.source === 'serial') sendToDevice('R'); }
+  function switchMode() { S.fireMode = S.fireMode === 'semi' ? 'auto' : 'semi'; Sfx.click(); updateHud(true); }
+  function jump() { if (S.player.y <= 0.001) { S.player.vy = 3.4; } }
+  range && (range.onHit = (zone, hit) => { Sfx.hit(zone); pipe.onHitFromGame(zone); if (navigator.vibrate) navigator.vibrate([20, 40, 20]); $('hitmarker').classList.remove('is-on'); void $('hitmarker').offsetWidth; $('hitmarker').classList.add('is-on'); $('hitmarker').dataset.zone = zone; updateHud(true); sendToDevice('H' + zone); });
+  range && (range.onMiss = () => { updateHud(true); });
+
+  /* ---------- HUD ---------- */
+  const hudEls = { score: $('hudScore'), acc: $('hudAcc'), streak: $('hudStreak'), ammo: $('hudAmmo'), mode: $('hudMode'), best: $('hudBest') };
+  let hudAmmoLast = -1, hudModeLast = '';
+  function updateHud(force) {
+    if (!range) return; const s = range.stats;
+    hudEls.score.textContent = s.score; hudEls.best.textContent = s.best; hudEls.acc.textContent = s.shots ? Math.round(s.hits / s.shots * 100) + '%' : '—'; hudEls.streak.textContent = s.streak > 1 ? '×' + s.streak : '';
+    if (force || hudAmmoLast !== S.ammo) { hudAmmoLast = S.ammo; hudEls.ammo.innerHTML = Array.from({ length: S.mag }, (_, i) => `<i class="${i < S.ammo ? 'on' : ''}"></i>`).join('') + `<b>${S.ammo}/${S.mag}</b>`; }
+    if (force || hudModeLast !== S.fireMode) { hudModeLast = S.fireMode; hudEls.mode.textContent = S.fireMode === 'semi' ? 'SEMI' : 'AUTO'; $('touchMode').textContent = S.fireMode === 'semi' ? 'SEMI' : 'AUTO'; }
+  }
+
+  /* ---------- input: keyboard ---------- */
+  const keys = new Set();
+  window.addEventListener('keydown', e => {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    const k = e.key.toLowerCase(); if (keys.has(k)) return; keys.add(k);
+    Sfx.ensure();
+    if (k === ' ') { if (S.mode === 'range') { S.btn[1] = 1; jump(); } else { pressTrigger(true); } e.preventDefault(); }
+    if (k === 'r') { S.btn[0] = 1; reload(); }
+    if (k === 'q') { S.btn[2] = 1; switchMode(); }
+    if (k === 'e') { if (S.mode === 'explore') { S.explode = S.explode > 0.5 ? 0 : 1; $('explode').value = S.explode * 100; } }
+    if (k === 'x') { if (S.mode === 'explore') $('btnXray').click(); }
+    if (k === 'c') recenter();
+    if (k === '1') setMode('explore'); if (k === '2') setMode('bench'); if (k === '3') setMode('range');
+    if (k === 'f') pressTrigger(true);
+  });
+  window.addEventListener('keyup', e => {
+    const k = e.key.toLowerCase(); keys.delete(k);
+    if (k === ' ') { S.btn[1] = 0; if (S.mode !== 'range') pressTrigger(false); }
+    if (k === 'r') S.btn[0] = 0; if (k === 'q') S.btn[2] = 0; if (k === 'f') pressTrigger(false);
+  });
+  window.addEventListener('blur', () => { keys.clear(); S.btn = [0, 0, 0]; if (S.trigger) pressTrigger(false); });
+
+  /* ---------- input: pointer on the viewport ---------- */
+  const isTouch = matchMedia('(pointer: coarse)').matches;
+  const pointers = new Map(); let dragMoved = 0, pinchDist = 0;
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('pointerdown', e => {
+    Sfx.ensure(); canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() }); dragMoved = 0;
+    if (S.mode === 'range') {
+      if (e.pointerType === 'mouse') { if (!document.pointerLockElement) { canvas.requestPointerLock && canvas.requestPointerLock(); } else if (e.button === 0) pressTrigger(true); }
+      else { /* touch: right half aims, handled in move */ }
+    }
+    if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinchDist = Math.hypot(a.x - b.x, a.y - b.y); }
+  });
+  canvas.addEventListener('pointermove', e => {
+    const p = pointers.get(e.pointerId);
+    if (S.mode === 'range') {
+      if (e.pointerType === 'mouse' && document.pointerLockElement === canvas) { aimBy(e.movementX, e.movementY); return; }
+      if (p && e.pointerType !== 'mouse') { const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY; aimBy(dx * 1.6, dy * 1.6); }
+      else if (p && e.pointerType === 'mouse') { const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY; aimBy(dx, dy); }
+      return;
+    }
+    if (!p) { if (S.mode === 'explore') { const now = performance.now(); if (now - S.lastPick > 90) { S.lastPick = now; const m = R.pickAt(scene, cam, e.clientX - viewport.getBoundingClientRect().left, e.clientY - viewport.getBoundingClientRect().top, dpr); hoverComp(m ? m.userData.comp : null); canvas.style.cursor = m ? 'pointer' : ''; } } return; }
+    const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY; dragMoved += Math.abs(dx) + Math.abs(dy);
+    if (pointers.size === 2) { const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinchDist) S.orbit.dist = clamp(S.orbit.dist * (pinchDist / d), 0.35, 2.2); pinchDist = d; return; }
+    if (S.mode === 'explore') { S.orbit.theta -= dx * 0.008; S.orbit.phi = clamp(S.orbit.phi + dy * 0.006, -0.4, 1.3); }
+    else if (S.mode === 'bench') { S.truthMouse.yaw -= dx * 0.006; S.truthMouse.pitch = clamp(S.truthMouse.pitch - dy * 0.006, -1.3, 1.3); }
+  });
+  const endPointer = e => {
+    const p = pointers.get(e.pointerId); pointers.delete(e.pointerId);
+    if (S.mode === 'range') { if (e.pointerType === 'mouse') pressTrigger(false); return; }
+    if (p && S.mode === 'explore' && dragMoved < 6 && performance.now() - p.t < 600) {
+      const r = viewport.getBoundingClientRect(); const m = R.pickAt(scene, cam, e.clientX - r.left, e.clientY - r.top, dpr);
+      if (m) showInfo(m.userData.comp); else hideInfo();
+    }
+  };
+  canvas.addEventListener('pointerup', endPointer); canvas.addEventListener('pointercancel', endPointer);
+  canvas.addEventListener('wheel', e => { if (S.mode !== 'explore') return; e.preventDefault(); S.orbit.dist = clamp(S.orbit.dist * (1 + Math.sign(e.deltaY) * 0.08), 0.35, 2.2); }, { passive: false });
+  document.addEventListener('pointerlockchange', () => { S.pointerLock = document.pointerLockElement === canvas; $('hudMsg').hidden = S.pointerLock || S.mode !== 'range'; if (S.pointerLock) Sfx.ensure(); if (!S.pointerLock && S.trigger) pressTrigger(false); });
+  function aimBy(dx, dy) { if (S.source !== 'mouse') return; S.truthMouse.yaw -= dx * 0.0022; S.truthMouse.pitch = clamp(S.truthMouse.pitch - dy * 0.0022, -1.45, 1.45); }
+
+  /* ---------- touch controls (range + bench) ---------- */
+  const stickBase = $('stickBase'), stickKnob = $('stickKnob'); let stickId = null;
+  stickBase.addEventListener('pointerdown', e => { stickId = e.pointerId; stickBase.setPointerCapture(e.pointerId); moveStick(e); });
+  stickBase.addEventListener('pointermove', e => { if (e.pointerId === stickId) moveStick(e); });
+  const endStick = e => { if (e.pointerId === stickId) { stickId = null; S.joyTouch = [0, 0]; stickKnob.style.transform = ''; } };
+  stickBase.addEventListener('pointerup', endStick); stickBase.addEventListener('pointercancel', endStick);
+  function moveStick(e) { const r = stickBase.getBoundingClientRect(); let x = (e.clientX - r.left - r.width / 2) / (r.width / 2), y = (e.clientY - r.top - r.height / 2) / (r.height / 2); const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; } S.joyTouch = [x, -y]; stickKnob.style.transform = `translate(${x * 34}px, ${y * 34}px)`; }
+  const hold = (el, down, up) => { el.addEventListener('pointerdown', e => { e.preventDefault(); Sfx.ensure(); el.setPointerCapture(e.pointerId); el.classList.add('is-down'); down(); }); const u = () => { el.classList.remove('is-down'); up && up(); }; el.addEventListener('pointerup', u); el.addEventListener('pointercancel', u); };
+  hold($('touchTrigger'), () => pressTrigger(true), () => pressTrigger(false));
+  hold($('touchReload'), () => { S.btn[0] = 1; reload(); }, () => S.btn[0] = 0);
+  hold($('touchJump'), () => { S.btn[1] = 1; jump(); }, () => S.btn[1] = 0);
+  hold($('touchMode'), () => { S.btn[2] = 1; switchMode(); }, () => S.btn[2] = 0);
+  hold($('benchTrigger'), () => pressTrigger(true), () => pressTrigger(false));
+  $('benchRecenter').addEventListener('click', recenter);
+
+  /* ---------- sources: mouse / phone gyro / serial ---------- */
+  const srcBtns = { mouse: $('srcMouse'), gyro: $('srcGyro'), serial: $('srcSerial') };
+  function setSource(s) {
+    S.source = s; pipe.input.source = s === 'serial' ? 'serial' : 'sim';
+    Object.entries(srcBtns).forEach(([k, b]) => { b.classList.toggle('is-on', k === s); b.setAttribute('aria-pressed', k === s); });
+    $('chipSource').textContent = s === 'mouse' ? 'Mouse & keyboard' : s === 'gyro' ? 'Phone gyroscope' : 'ESP32 · USB serial';
+    $('chipSource').dataset.src = s; $('v-src').textContent = s === 'mouse' ? 'simulated IMU (mouse)' : s === 'gyro' ? 'phone IMU (DeviceOrientation)' : 'MPU6050 over USB serial';
+    if (gun) gun.st.statusMode = s === 'serial' ? 'serial' : pipe.cfg.transport === 'ble' ? 'ble' : 'sim';
+    if (s !== 'serial' && S.serial.ok) disconnectSerial();
+  }
+  srcBtns.mouse.addEventListener('click', () => { setSource('mouse'); setStatus('Aim with the mouse (or drag on touch). Everything downstream is simulated from that motion.'); });
+  srcBtns.gyro.addEventListener('click', async () => {
+    Sfx.ensure();
+    if (!('DeviceOrientationEvent' in window)) { setStatus('This browser has no orientation sensor. Open this page on a phone.', true); return; }
+    try {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') { const r = await DeviceOrientationEvent.requestPermission(); if (r !== 'granted') { setStatus('Permission for motion sensors was denied.', true); return; } }
+      if (!S.gyro.ok) { window.addEventListener('deviceorientation', onOrientation); S.gyro.ok = true; }
+      S.gyro.a0 = null; setSource('gyro'); setStatus('Hold the phone flat, top edge forward, and press Re-centre. Tilt to aim.');
+      if (S.mode === 'explore') setMode('bench');
+    } catch (e) { setStatus('Could not start the orientation sensor: ' + e.message, true); }
+  });
+  function onOrientation(e) {
+    if (e.alpha == null) return;
+    const g = S.gyro; let a = e.alpha; if (g.a0 === null) { g.a0 = { a, b: e.beta, c: e.gamma }; g.lastA = a; g.unwrap = 0; }
+    let d = a - g.lastA; if (d > 180) d -= 360; if (d < -180) d += 360; g.unwrap += d; g.lastA = a;
+    g.yaw = g.unwrap * RAD; g.pitch = clamp((e.beta - g.a0.b) * RAD, -1.45, 1.45); g.roll = -(e.gamma - g.a0.c) * RAD;
+  }
+  srcBtns.serial.addEventListener('click', connectSerial);
+  $('btnDisconnect').addEventListener('click', disconnectSerial);
+  function setStatus(msg, bad) { const el = $('connStatus'); el.textContent = msg; el.classList.toggle('is-bad', !!bad); }
+  async function connectSerial() {
+    Sfx.ensure();
+    if (!('serial' in navigator)) { setStatus('Web Serial needs Chrome or Edge on a desktop (or Android). Firefox and iOS do not support it yet.', true); return; }
+    try {
+      const port = await navigator.serial.requestPort(); await port.open({ baudRate: 115200 });
+      S.serial.port = port; S.serial.ok = true; S.serial.frames = 0; S.serial.writer = port.writable.getWriter();
+      setSource('serial'); setStatus('Connected at 115200 baud — waiting for $ frames from the firmware…'); $('btnDisconnect').hidden = false;
+      if (S.mode === 'explore') setMode('bench');
+      readSerial(port);
+    } catch (e) { setStatus('Serial connection failed: ' + e.message, true); }
+  }
+  async function readSerial(port) {
+    const dec = new TextDecoderStream(); port.readable.pipeTo(dec.writable).catch(() => { }); const reader = dec.readable.getReader(); S.serial.reader = reader; let buf = '';
+    try {
+      while (true) {
+        const { value, done } = await reader.read(); if (done) break; buf += value; let i;
+        while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); parseFrame(line); }
+      }
+    } catch (e) { setStatus('Serial link dropped: ' + e.message, true); }
+    disconnectSerial();
+  }
+  function parseFrame(line) {
+    if (!line.startsWith('$')) { if (line.startsWith('#')) setStatus('Device: ' + line.slice(1).trim()); return; }
+    const v = line.slice(1).split(',').map(Number); if (v.length < 15 || v.some(isNaN)) return;
+    pipe.serial = { gx: v[0], gy: v[1], gz: v[2], ax: v[3], ay: v[4], az: v[5], yaw: v[6], pitch: v[7], roll: v[8], trig: v[9] ? 1 : 0, b1: v[10] ? 1 : 0, b2: v[11] ? 1 : 0, b3: v[12] ? 1 : 0, jx: v[13], jy: v[14], t: performance.now() };
+    S.serial.frames++; if (S.serial.frames % 50 === 1) setStatus(`ESP32 streaming · ${S.serial.frames} frames · yaw ${v[6].toFixed(1)}° pitch ${v[7].toFixed(1)}°`);
+  }
+  async function disconnectSerial() {
+    const s = S.serial; if (!s.ok) return; s.ok = false;
+    try { if (s.reader) await s.reader.cancel(); } catch (e) { } try { if (s.writer) { s.writer.releaseLock(); } } catch (e) { } try { if (s.port) await s.port.close(); } catch (e) { }
+    s.port = null; s.reader = null; s.writer = null; pipe.serial = null; $('btnDisconnect').hidden = true;
+    if (S.source === 'serial') { setSource('mouse'); setStatus('Disconnected. Back to mouse control.'); }
+  }
+  const enc = new TextEncoder();
+  function sendToDevice(msg) { $('v-todev').textContent = msg + (S.serial.ok ? '' : ' (not connected — would send)'); if (S.serial.ok && S.serial.writer) S.serial.writer.write(enc.encode(msg + '\n')).catch(() => { }); }
+  let serialTrigLast = 0, serialBtnLast = [0, 0, 0];
+
+  /* ---------- sparkline ---------- */
+  const spark = $('spark'), sctx = spark.getContext('2d');
+  function drawSpark() {
+    const w = spark.clientWidth || 300, h = spark.clientHeight || 72; if (spark.width !== w * dpr || spark.height !== h * dpr) { spark.width = w * dpr; spark.height = h * dpr; }
+    sctx.setTransform(dpr, 0, 0, dpr, 0, 0); sctx.clearRect(0, 0, w, h);
+    const H = pipe.history, n = 160; let mx = 30; for (let i = 0; i < n; i++) mx = Math.max(mx, Math.abs(H.gx[i]), Math.abs(H.gy[i]), Math.abs(H.gz[i]));
+    mx = Math.min(250, Math.ceil(mx / 10) * 10);
+    sctx.strokeStyle = tokens.line; sctx.lineWidth = 1; sctx.beginPath(); sctx.moveTo(0, h / 2 + 0.5); sctx.lineTo(w, h / 2 + 0.5); sctx.stroke();
+    sctx.fillStyle = tokens.ink3; sctx.font = '10px "IBM Plex Mono", ui-monospace, monospace'; sctx.textBaseline = 'top'; sctx.fillText('+' + mx + ' °/s', 4, 2); sctx.textBaseline = 'bottom'; sctx.fillText('−' + mx, 4, h - 2);
+    const series = [[H.gx, tokens.s1], [H.gy, tokens.s2], [H.gz, tokens.s3]];
+    for (const [arr, col] of series) {
+      sctx.strokeStyle = col; sctx.lineWidth = 1.5; sctx.beginPath();
+      for (let i = 0; i < n; i++) { const v = arr[(H.i + i) % n]; const x = i / (n - 1) * (w - 6) + 3, y = h / 2 - v / mx * (h / 2 - 8); if (i === 0) sctx.moveTo(x, y); else sctx.lineTo(x, y); }
+      sctx.stroke();
+      const last = arr[(H.i + n - 1) % n]; sctx.fillStyle = col; sctx.beginPath(); sctx.arc(w - 3, h / 2 - last / mx * (h / 2 - 8), 2.5, 0, Math.PI * 2); sctx.fill();
+    }
+  }
+
+  /* ---------- panel readouts ---------- */
+  const el = {};
+  ['v-gx', 'v-gy', 'v-gz', 'v-ax', 'v-ay', 'v-az', 'v-hz', 'v-pgx', 'v-pgy', 'v-pgz', 'v-pitch', 'v-roll', 'v-yaw', 'v-bias', 'v-drift', 'v-transport', 'v-mouse', 'v-kb', 'v-pps', 'v-latency', 'v-camyaw', 'v-campitch', 'v-dev', 'v-motor', 'v-buzz', 'v-fps', 'c-trig', 'c-b0', 'c-b1', 'c-b2', 'joyDot', 'fb-led', 'fb-status', 'fb-motor', 'fb-buzz', 'hidLog', 'v-actions', 'fb-ammo', 'benchYaw', 'benchPitch', 'benchRoll', 'benchAmmo', 'v-total'].forEach(id => el[id] = $(id));
+  let logTotal = -1, uiAcc = 0;
+  function updatePanel(dt) {
+    uiAcc += dt; if (uiAcc < 0.06) return; uiAcc = 0;
+    const r = pipe.raw, p = pipe.proc, h = pipe.hid, g = pipe.game, f = pipe.fb;
+    el['v-gx'].textContent = fmt(r.gx); el['v-gy'].textContent = fmt(r.gy); el['v-gz'].textContent = fmt(r.gz);
+    el['v-ax'].textContent = fmt(r.ax, 2); el['v-ay'].textContent = fmt(r.ay, 2); el['v-az'].textContent = fmt(r.az, 2); el['v-hz'].textContent = p.hz + ' Hz';
+    el['v-pgx'].textContent = fmt(p.gx); el['v-pgy'].textContent = fmt(p.gy); el['v-pgz'].textContent = fmt(p.gz);
+    el['v-pitch'].textContent = fmt(p.pitch) + '°'; el['v-roll'].textContent = fmt(p.roll) + '°'; el['v-yaw'].textContent = fmt(p.yaw) + '°';
+    el['v-bias'].textContent = p.bias.map(v => fmt(v, 2)).join(' ') + (pipe.calib ? ' …' : '');
+    const drift = p.yaw - (pipe.truth.yaw - S._yaw0) * DEG; el['v-drift'].textContent = fmt(wrapDeg(drift)) + '°';
+    el['v-transport'].textContent = pipe.cfg.transport === 'ble' ? 'Bluetooth LE HID' : pipe.cfg.transport === 'usb' ? 'USB HID (wired)' : 'USB serial → bridge';
+    el['v-mouse'].textContent = hex(h.mouse); el['v-kb'].textContent = hex(h.kb); el['v-pps'].textContent = h.pps + ' /s'; el['v-total'].textContent = h.total;
+    const lat = pipe.latencyEstimate(); el['v-latency'].textContent = lat.total + ' · ' + lat.link;
+    el['v-camyaw'].textContent = fmt(wrapDeg(g.yaw * DEG)) + '°'; el['v-campitch'].textContent = fmt(g.pitch * DEG) + '°';
+    const dev = S.mode === 'range' ? Math.hypot(wrapDeg((pipe.truth.yaw - g.yaw) * DEG), (pipe.truth.pitch - g.pitch) * DEG) : 0; el['v-dev'].textContent = fmt(dev, 2) + '°';
+    el['v-actions'].innerHTML = ['FIRE', 'RELOAD', 'JUMP', 'SWITCH', 'MOVE'].map(a => `<span class="chip ${g.actions.has(a) ? 'is-on' : ''}">${a}</span>`).join('');
+    el['c-trig'].classList.toggle('is-on', !!pipe.input.trigger); el['c-b0'].classList.toggle('is-on', !!pipe.input.buttons[0]); el['c-b1'].classList.toggle('is-on', !!pipe.input.buttons[1]); el['c-b2'].classList.toggle('is-on', !!pipe.input.buttons[2]);
+    el['joyDot'].style.transform = `translate(${pipe.input.joy[0] * 18}px, ${-pipe.input.joy[1] * 18}px)`;
+    el['fb-led'].classList.toggle('is-on', !!f.led); el['fb-status'].dataset.mode = gun.st.statusMode;
+    el['fb-motor'].style.width = (f.motor / 255 * 100) + '%'; el['v-motor'].textContent = Math.round(f.motor) + ' /255';
+    el['fb-buzz'].classList.toggle('is-on', f.buzzF > 0); el['v-buzz'].textContent = f.buzzF ? f.buzzF + ' Hz' : 'silent';
+    el['fb-ammo'].innerHTML = Array.from({ length: 6 }, (_, i) => `<i class="${i < S.ammo ? 'on' : ''}"></i>`).join('');
+    el['v-fps'].textContent = S.fps + ' fps';
+    if (logTotal !== h.total) { logTotal = h.total; el['hidLog'].textContent = h.log.slice(-8).map(e => `${e.t.toFixed(2).padStart(8)}  ${e.kind === 'M' ? 'MOUSE' : 'KEYB '}  ${hex(e.bytes)}`).join('\n') || 'no reports yet — move the gun'; }
+    if (S.mode === 'bench') { el['benchYaw'].textContent = fmt(wrapDeg(pipe.truth.yaw * DEG)); el['benchPitch'].textContent = fmt(pipe.truth.pitch * DEG); el['benchRoll'].textContent = fmt(pipe.truth.roll * DEG); el['benchAmmo'].textContent = S.ammo + ' / ' + S.mag; }
+  }
+  const wrapDeg = a => { while (a > 180) a -= 360; while (a < -180) a += 360; return a; };
+  S._yaw0 = 0;
+
+  /* ---------- main loop ---------- */
+  let last = performance.now(); let benchBuzzLast = 0;
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const elapsed = (now - last) / 1000 || 0.016; last = now;
+    let dt = Math.min(0.05, elapsed); const dtSensor = Math.min(0.25, elapsed);   // physics is clamped; the sensor sees real time
+    S.time += dt;
+    S.fpsAcc += dt; S.fpsN++; if (S.fpsAcc >= 0.5) { S.fps = Math.round(S.fpsN / S.fpsAcc); S.fpsAcc = 0; S.fpsN = 0; }
+    /* --- truth orientation of the physical gun --- */
+    let yaw, pitch, roll;
+    const swayA = S.mode === 'range' ? 0.0025 : 0.0015, t = S.time;
+    const sway = [Math.sin(t * 1.1) * swayA + Math.sin(t * 2.7) * swayA * 0.4, Math.cos(t * 0.9) * swayA + Math.sin(t * 3.1) * swayA * 0.3, Math.sin(t * 0.7) * 0.01];
+    if (S.source === 'gyro' && S.gyro.ok) { yaw = S.gyro.yaw; pitch = S.gyro.pitch; roll = S.gyro.roll; if (S.gyro.pendingJump && S.gyro.a0) { pipe.jumpTo(yaw, pitch, roll); S._yaw0 = yaw; S.gyro.pendingJump = false; } }
+    else if (S.source === 'serial') { yaw = pipe.truth.yaw; pitch = pipe.truth.pitch; roll = pipe.truth.roll; }
+    else { yaw = S.truthMouse.yaw + sway[0]; pitch = S.truthMouse.pitch + sway[1]; roll = sway[2]; }
+    if (S.source !== 'serial') pipe.setTruth(yaw, pitch, roll);
+    /* --- inputs into the controller --- */
+    if (S.source !== 'serial') {
+      pipe.input.trigger = S.trigger; pipe.input.buttons = S.btn.slice();
+      const kx = (keys.has('d') ? 1 : 0) - (keys.has('a') ? 1 : 0), ky = (keys.has('w') ? 1 : 0) - (keys.has('s') ? 1 : 0);
+      pipe.input.joy = (S.joyTouch[0] || S.joyTouch[1]) ? S.joyTouch.slice() : [kx, ky];
+    }
+    pipe.step(dtSensor);
+    if (S.source === 'serial' && pipe.serial) { /* device buttons drive the weapon */
+      const tr = pipe.input.trigger; if (tr && !serialTrigLast) pressTrigger(true); if (!tr && serialTrigLast) pressTrigger(false); serialTrigLast = tr;
+      const b = pipe.input.buttons; if (b[0] && !serialBtnLast[0]) reload(); if (b[1] && !serialBtnLast[1]) jump(); if (b[2] && !serialBtnLast[2]) switchMode(); serialBtnLast = b.slice();
+      S.trigger = tr; S.btn = b.slice();
+    }
+    /* --- weapon timers --- */
+    if (S.fireMode === 'auto' && S.trigger && S.reloading <= 0) { S.autoTimer -= dt; if (S.autoTimer <= 0) { if (S.ammo > 0) { shoot(); S.autoTimer = 1 / 6; } else { S.autoTimer = 0.3; } } }
+    if (S.reloading > 0) { S.reloading -= dt; const k = 1 - S.reloading / S.reloadTotal; gun.st.mag = k < 0.5 ? k * 2 : (1 - k) * 2; if (S.reloading <= 0) { S.reloading = 0; S.ammo = S.mag; gun.st.ammo = S.ammo; gun.st.mag = 0; Sfx.reloadEnd(); pipe.onReload(true); updateHud(); } }
+    S.recoil = Math.max(0, S.recoil - dt * 7); S.flash = Math.max(0, S.flash - dt * 14); S.camKick = Math.max(0, S.camKick - dt * 6);
+    /* --- device-side feedback → model + sound --- */
+    const fb = pipe.fb;
+    gun.st.flash = Math.max(S.flash, fb.led ? 0.6 : 0); gun.st.stick = pipe.input.joy.slice(); gun.st.buttons = pipe.input.buttons.slice(); gun.st.trigger = pipe.input.trigger ? 1 : 0;
+    gun.st.explode += (S.explode - gun.st.explode) * Math.min(1, dt * 6); gun.st.xray = S.xray;
+    if (fb.buzzF && now - benchBuzzLast > 25 && Sfx.on) { Sfx.buzzer(fb.buzzF, 30); benchBuzzLast = now; }
+    for (const m of fb.toDevice.splice(0)) { if (S.serial.ok) sendToDevice(m); }
+    /* --- camera & gun placement per mode --- */
+    const jitter = fb.motor / 255 * 0.0015;
+    if (S.mode === 'range') {
+      const P = S.player, g = pipe.game;
+      const j = pipe.input.joy; const mv = [(Math.abs(j[0]) > 0.5 ? Math.sign(j[0]) : 0), (Math.abs(j[1]) > 0.5 ? Math.sign(j[1]) : 0)];
+      const fwd = [-Math.sin(g.yaw), 0, -Math.cos(g.yaw)], right = [Math.cos(g.yaw), 0, -Math.sin(g.yaw)]; const speed = 3.2;
+      P.x = clamp(P.x + (fwd[0] * mv[1] + right[0] * mv[0]) * speed * dt, -9, 9); P.z = clamp(P.z + (fwd[2] * mv[1] + right[2] * mv[0]) * speed * dt, -1.5, 6);
+      const moving = mv[0] || mv[1]; P.bobPhase += dt * (moving ? 9 : 0); P.bob += ((moving ? Math.sin(P.bobPhase) * 0.02 : 0) - P.bob) * Math.min(1, dt * 8);
+      if (P.y > 0 || P.vy > 0) { P.vy -= 9.81 * dt; P.y = Math.max(0, P.y + P.vy * dt); if (P.y === 0) P.vy = 0; }
+      cam.pos = [P.x, 1.6 + P.y + P.bob, P.z]; cam.rot = Q.euler(g.yaw, g.pitch + S.camKick * 0.012, 0);
+      const devYaw = clamp(wrapPi(pipe.truth.yaw - g.yaw), -0.14, 0.14), devPitch = clamp(pipe.truth.pitch - g.pitch, -0.14, 0.14);
+      const rc = S.recoil * S.recoil;
+      gun.root.pos = [0.13 + (Math.random() - 0.5) * jitter, -0.125 + P.bob * 0.4 + rc * 0.008 + (Math.random() - 0.5) * jitter, -0.30 + rc * 0.03];
+      gun.root.rot = Q.euler(devYaw + 0.02, devPitch + rc * 0.11, pipe.truth.roll * 0.5 + (Math.random() - 0.5) * jitter * 8);
+      range.update(dt, S.time);
+    } else {
+      const o = S.orbit; if (S.autoRotate && !reduceMotion && S.mode === 'explore') o.theta -= dt * 0.25;
+      const th = S.mode === 'bench' ? -2.05 : o.theta, ph = S.mode === 'bench' ? 0.28 : o.phi, di = (S.mode === 'bench' ? 0.95 : o.dist * (1 + 0.55 * gun.st.explode)) * Math.max(1, 1.05 / (W / H));
+      const eye = [o.target[0] + di * Math.sin(th) * Math.cos(ph), o.target[1] + di * Math.sin(ph), o.target[2] + di * Math.cos(th) * Math.cos(ph)];
+      cam.lookAt(eye, o.target);
+      if (S.mode === 'bench') { const rc = S.recoil * S.recoil; gun.root.rot = Q.euler(yaw, pitch + rc * 0.06, roll); gun.root.pos = [(Math.random() - 0.5) * jitter, (Math.random() - 0.5) * jitter, rc * 0.02]; }
+      else { gun.root.rot = Q.ident(); gun.root.pos = [0, 0, 0]; }
+    }
+    gun.apply();
+    scene.updateWorld(null); cam.updateView();
+    /* --- render --- */
+    const flashPt = S.flash > 0.05 ? gun.muzzle.worldPos() : [0, -10, 0];
+    const L = S.mode === 'range'
+      ? { background: theme.bg, lightDir: [0.25, 1, 0.55], lightColor: [0.95, 0.92, 0.86], hemiSky: [0.55, 0.6, 0.72], hemiGround: [0.22, 0.2, 0.2], fogColor: theme.bg, fogNear: 14, fogFar: 40, point: { pos: flashPt, color: V3.scale([1.6, 0.8, 0.25], S.flash), range: 2.5 }, shadow: { center: [S.player.x, 0, S.player.z - 9], size: 14, dist: 30 } }
+      : { background: theme.bg, lightDir: [-0.45, 1, -0.35], lightColor: theme.light, hemiSky: theme.hemiSky, hemiGround: theme.hemiGround, fogColor: theme.bg, fogNear: 4, fogFar: 9, point: { pos: flashPt, color: V3.scale([1.6, 0.8, 0.25], S.flash), range: 0.7 }, shadow: { center: [0, -0.05, 0], size: 0.62 + 0.4 * gun.st.explode, dist: 1.8 } };
+    if (pedestal) pedestal.mat.color = theme.ground;
+    R.render(scene, cam, L);
+    updateLabels(); drawSpark(); updatePanel(dt);
+  }
+
+  /* ---------- boot ---------- */
+  function start(saved) {
+    setTab('signal'); setSource('mouse'); updateHud(true);
+    if (R) { setMode(saved && saved.mode ? saved.mode : 'explore'); requestAnimationFrame(frame); }
+    if (!isTouch) $('touch').classList.add('is-desktop');
+    setTimeout(() => { S.explode = 0; }, 0);
+    window.claude?.hot?.snapshot?.(() => ({ mode: S.mode }));
+  }
+  window.FalconSim = { S, pipe, setMode, pressTrigger, reload, switchMode, jump, recenter, setSource, setTab, aimBy, range, gun, cam, R };
+  if (R) { window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {}); } else { start({}); }
+})();
+
+/* hide the boot splash once the first frame is on screen (or after a hard timeout) */
+(function () {
+  var boot = document.getElementById('boot'); if (!boot) return;
+  var kill = function () { boot.classList.add('is-done'); setTimeout(function () { boot.remove(); }, 400); };
+  requestAnimationFrame(function () { requestAnimationFrame(kill); });
+  setTimeout(kill, 4000);
+})();
+
+</script>
+</body>
+</html>
